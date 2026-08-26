@@ -1,0 +1,688 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Users, ClipboardList, BarChart3, LogOut, Download, 
+  UserPlus, Trash2, CheckCircle2, AlertCircle, Menu, X, Save,
+  Search, CheckSquare, Trophy
+} from 'lucide-react';
+
+// ==========================================
+// PENGATURAN LOGO (Ganti URL dengan gambar logo hasil cut Anda)
+// ==========================================
+const LOGO_URL = "https://ui-avatars.com/api/?name=PGT+Muallimin&background=4c1d95&color=fff&rounded=true&size=256&bold=true";
+
+// --- DATA SELURUH PEMAIN (Sesuai Foto Catatan Presisi) ---
+const INITIAL_STUDENTS = [
+  // Section Brass (Daftar Atas)
+  { id: 1, name: 'Rajendra Arya Abiyyu', kelas: '2H', asrama: 'C', section: 'Brass' },
+  { id: 2, name: 'Ahmad Arkan Sya\'bani', kelas: '3A', asrama: 'A', section: 'Brass' },
+  { id: 3, name: 'Arkana El Sabily', kelas: '3B', asrama: 'B', section: 'Brass' },
+  { id: 4, name: 'Jaladri Arif Wirasena', kelas: '3B', asrama: 'B', section: 'Brass' },
+  { id: 5, name: 'Jangky Daulat', kelas: '3C', asrama: 'B', section: 'Brass' },
+  { id: 6, name: 'Muhammad Zhafif Alkahfi', kelas: '3US', asrama: 'A', section: 'Brass' },
+  { id: 7, name: 'Abimanyu Aryo Atmojo N.', kelas: '4D', asrama: 'C', section: 'Brass' },
+  { id: 8, name: 'Ahmad Syamil Zakaria', kelas: '4B', asrama: 'B', section: 'Brass' },
+  { id: 9, name: 'Kevin Zahlan Firdaus', kelas: '4B', asrama: 'B', section: 'Brass' },
+  { id: 10, name: 'M. Nabil Zakwan Zak.', kelas: '4E', asrama: 'D', section: 'Brass' },
+  { id: 11, name: 'Raditya Aris Nararya S.', kelas: '4E', asrama: 'D', section: 'Brass' },
+  { id: 12, name: 'Panji Nugroho Adji', kelas: '2F', asrama: 'C', section: 'Brass' },
+  { id: 13, name: 'M. Arique Al Faqih', kelas: '2LSA', asrama: 'A', section: 'Brass' },
+  { id: 14, name: 'Emir Mandi Mandapiqi', kelas: '2LSA', asrama: 'A', section: 'Brass' },
+  { id: 15, name: 'Fathan Naufal Budiman', kelas: '2F', asrama: 'C', section: 'Brass' },
+  { id: 16, name: 'Hilmi Aji Al Faqih', kelas: '2F', asrama: 'C', section: 'Brass' },
+
+  // Section Cologuard / CG
+  { id: 17, name: 'Ahmad Mumtaz D. El Haq', kelas: '1C', asrama: 'D', section: 'Cologuard' },
+  { id: 18, name: 'Arza Danish Fahrera', kelas: '1C', asrama: 'D', section: 'Cologuard' },
+  { id: 19, name: 'Aruna Hapiz Pranaja', kelas: '2LSA', asrama: 'A', section: 'Cologuard' },
+  { id: 20, name: 'Dannish Ali Azmi', kelas: '2H', asrama: 'C', section: 'Cologuard' },
+  { id: 21, name: 'Haveef Dzakyan Ellard', kelas: '2LSA', asrama: 'A', section: 'Cologuard' },
+  { id: 22, name: 'Rafa Rajendra Wikrama', kelas: '2F', asrama: 'C', section: 'Cologuard' },
+  { id: 23, name: 'Muhammad Ahsani Taqvim', kelas: '3B', asrama: 'B', section: 'Cologuard' },
+  { id: 24, name: 'Dimas Nur Sayyid', kelas: '4D', asrama: 'C', section: 'Cologuard' },
+  { id: 25, name: 'Lukman Husain Assarim', kelas: '4B', asrama: 'B', section: 'Cologuard' },
+  { id: 26, name: 'M. Syam Fatih Ibrahim', kelas: '2F', asrama: 'C', section: 'Cologuard' },
+
+  // Section Battery
+  { id: 27, name: 'Ahmad Zufaril', kelas: '1C', asrama: 'D', section: 'Battery' },
+  { id: 28, name: 'Ahsan Abdullah', kelas: '1C', asrama: 'D', section: 'Battery' },
+  { id: 29, name: 'Arsyad Farkhi Ismail', kelas: '1C', asrama: 'D', section: 'Battery' },
+  { id: 30, name: 'Atillan Azfar Rasy', kelas: '1D', asrama: 'D', section: 'Battery' },
+  { id: 31, name: 'Muhammad Irsyad Wijaya', kelas: '1C', asrama: 'D', section: 'Battery' },
+  { id: 32, name: 'Danendra Irknam', kelas: '2B', asrama: 'C', section: 'Battery' },
+  { id: 33, name: 'Dyandra F.', kelas: '3D', asrama: 'B', section: 'Battery' },
+  { id: 34, name: 'Kemal Mubarak S.', kelas: '3B', asrama: 'B', section: 'Battery' },
+  { id: 35, name: 'Muhammad Hafiz Firdaus', kelas: '4C', asrama: 'D', section: 'Battery' },
+  { id: 36, name: 'Muhammad Faris Shidqi', kelas: '2F', asrama: 'C', section: 'Battery' },
+  { id: 37, name: 'Kevin Wahyu Ilani', kelas: '2E', asrama: 'C', section: 'Battery' },
+
+  // Section Pit
+  { id: 38, name: 'Syamil Ramadhani', kelas: '1D', asrama: 'D', section: 'Pit' },
+  { id: 39, name: 'Faaris Abiyyu Indrasetya', kelas: '2LSA', asrama: 'A', section: 'Pit' },
+  { id: 40, name: 'Luth Adwa Aban Widagdo', kelas: '2A', asrama: 'C', section: 'Pit' },
+  { id: 41, name: 'Nabil Farasy', kelas: '2C', asrama: 'C', section: 'Pit' },
+  { id: 42, name: 'Surya Arga Bintara', kelas: '2LSA', asrama: 'A', section: 'Pit' },
+  { id: 43, name: 'M. Farros Prasetyaning P.', kelas: '3D', asrama: 'B', section: 'Pit' },
+];
+
+export default function App() {
+  const [user, setUser] = useState(null); 
+  const [activeTab, setActiveTab] = useState('attendance');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showSuccessMsg, setShowSuccessMsg] = useState(false);
+
+  const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [attendances, setAttendances] = useState([]);
+
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedSection, setSelectedSection] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const username = e.target.username.value;
+    const password = e.target.password.value;
+
+    if (username === 'admin' && password === 'admin') {
+      setUser({ username, role: 'admin' });
+      setActiveTab('recap');
+    } else if (username === 'user' && password === 'user') {
+      setUser({ username, role: 'user' });
+      setActiveTab('attendance');
+    } else {
+      alert('Username atau Password salah! (Gunakan admin/admin atau user/user)');
+    }
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setActiveTab('attendance');
+    setSearchQuery('');
+  };
+
+  const handleSaveAttendance = (studentId, status, note) => {
+    setAttendances(prev => {
+      let dateIndex = prev.findIndex(a => a.date === selectedDate);
+      let newData = [...prev];
+
+      if (dateIndex === -1) {
+        newData.push({ date: selectedDate, records: [{ studentId, status, note }] });
+      } else {
+        let recordIndex = newData[dateIndex].records.findIndex(r => r.studentId === studentId);
+        if (recordIndex === -1) {
+          newData[dateIndex].records.push({ studentId, status, note });
+        } else {
+          newData[dateIndex].records[recordIndex] = { studentId, status, note };
+        }
+      }
+      return newData;
+    });
+  };
+
+  const handleMarkAllPresent = () => {
+    setAttendances(prev => {
+      let newData = [...prev];
+      let dateIndex = newData.findIndex(a => a.date === selectedDate);
+      
+      if (dateIndex === -1) {
+        newData.push({ date: selectedDate, records: [] });
+        dateIndex = newData.length - 1;
+      }
+      
+      const currentRecords = [...newData[dateIndex].records];
+      
+      filteredStudents.forEach(student => {
+        const existingRecordIndex = currentRecords.findIndex(r => r.studentId === student.id);
+        if (existingRecordIndex === -1) {
+          currentRecords.push({ studentId: student.id, status: 'Hadir', note: '' });
+        } else {
+          currentRecords[existingRecordIndex] = { ...currentRecords[existingRecordIndex], status: 'Hadir' };
+        }
+      });
+      
+      newData[dateIndex].records = currentRecords;
+      return newData;
+    });
+    showToast();
+  };
+
+  const showToast = () => {
+    setShowSuccessMsg(true);
+    setTimeout(() => {
+      setShowSuccessMsg(false);
+    }, 3000);
+  };
+
+  const getCurrentRecord = (studentId) => {
+    const dateData = attendances.find(a => a.date === selectedDate);
+    return dateData?.records.find(r => r.studentId === studentId) || { status: '', note: '' };
+  };
+
+  const recapData = useMemo(() => {
+    const totalDays = attendances.length || 1;
+    
+    return students.map(student => {
+      let presentCount = 0;
+      let notes = [];
+
+      attendances.forEach(day => {
+        const record = day.records.find(r => r.studentId === student.id);
+        if (record) {
+          if (record.status === 'Hadir') presentCount++;
+          if (record.note) notes.push(`(${day.date}: ${record.note})`);
+        }
+      });
+
+      const percentage = Math.round((presentCount / totalDays) * 100);
+      return {
+        ...student,
+        presentCount,
+        percentage: attendances.length === 0 ? 100 : percentage,
+        notes: notes.join(', ')
+      };
+    });
+  }, [students, attendances]);
+
+  const sectionLeaderboard = useMemo(() => {
+    const stats = {};
+    recapData.forEach(student => {
+      if (!stats[student.section]) {
+        stats[student.section] = { totalPercentage: 0, count: 0 };
+      }
+      stats[student.section].totalPercentage += student.percentage;
+      stats[student.section].count += 1;
+    });
+
+    return Object.keys(stats).map(section => ({
+      section,
+      average: Math.round(stats[section].totalPercentage / stats[section].count)
+    })).sort((a, b) => b.average - a.average);
+  }, [recapData]);
+
+  const exportToExcel = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "No,Nama,Kelas,Asrama,Section,Persentase Kehadiran,Status,Catatan Halangan\n";
+    
+    recapData.forEach((row, index) => {
+      const isWarning = row.percentage < 80 ? "Di Bawah 80%" : "Aman";
+      const cleanNote = row.notes.replace(/,/g, ';'); 
+      const rowData = `${index + 1},${row.name},${row.kelas},${row.asrama},${row.section},${row.percentage}%,${isWarning},${cleanNote}`;
+      csvContent += rowData + "\n";
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Rekap_Absensi_PGT_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const sections = ['All', ...new Set(students.map(s => s.section))];
+  
+  const filteredStudents = students.filter(s => {
+    const matchSection = selectedSection === 'All' || s.section === selectedSection;
+    const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        s.kelas.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchSection && matchSearch;
+  });
+  
+  const todayRecords = attendances.find(a => a.date === selectedDate)?.records || [];
+  const presentCount = filteredStudents.filter(s => todayRecords.find(r => r.studentId === s.id && r.status === 'Hadir')).length;
+  const recordedCount = filteredStudents.filter(s => todayRecords.find(r => r.studentId === s.id && r.status !== '')).length;
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-64 bg-purple-900 rounded-b-[4rem] shadow-xl z-0"></div>
+        
+        <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 relative mt-10">
+          <div className="flex justify-center mb-4">
+            <div className="bg-black p-1 rounded-full shadow-2xl border-4 border-purple-200 overflow-hidden w-28 h-28 flex items-center justify-center">
+               <img src={LOGO_URL} alt="Logo PGT" className="w-full h-full object-cover" onError={(e) => {e.target.src="https://placehold.co/200x200/4c1d95/fff?text=PGT"}} />
+            </div>
+          </div>
+          <h2 className="text-center text-3xl font-extrabold text-white mb-2">
+            PGT MU'ALLIMIN
+          </h2>
+          <p className="text-center text-sm text-purple-200 mb-8 font-medium tracking-wide">
+            Sistem Absensi Terpadu
+          </p>
+        </div>
+
+        <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 relative">
+          <div className="bg-white py-8 px-6 shadow-2xl sm:rounded-2xl border border-gray-100">
+            <form className="space-y-6" onSubmit={handleLogin}>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Username</label>
+                <div className="mt-1">
+                  <input name="username" type="text" required className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 bg-gray-50 transition-colors" placeholder="Masukkan username" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700">Password</label>
+                <div className="mt-1">
+                  <input name="password" type="password" required className="appearance-none block w-full px-4 py-3 border border-gray-300 rounded-xl shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 bg-gray-50 transition-colors" placeholder="••••••••" />
+                </div>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-xl text-sm text-purple-800 border border-purple-100">
+                <span className="font-bold flex items-center mb-1"><AlertCircle size={16} className="mr-1"/> Info Akses:</span>
+                Admin: <code>admin</code> / <code>admin</code><br/>
+                User: <code>user</code> / <code>user</code>
+              </div>
+              <button type="submit" className="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-purple-800 hover:bg-purple-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all transform hover:scale-[1.02]">
+                Masuk ke Sistem
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col md:flex-row font-sans text-gray-800">
+      
+      <div className="md:hidden bg-purple-900 text-white p-4 flex justify-between items-center shadow-md z-20 sticky top-0">
+        <div className="flex items-center">
+          <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white mr-3">
+             <img src={LOGO_URL} alt="Logo PGT" className="w-full h-full object-cover" onError={(e) => {e.target.src="https://placehold.co/100x100/4c1d95/fff?text=PGT"}} />
+          </div>
+          <h1 className="font-bold text-lg leading-tight">PGT<br/><span className="text-xs font-normal text-purple-300">Mu'allimin Jogja</span></h1>
+        </div>
+        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-purple-800 rounded-lg focus:outline-none">
+          {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
+      <div className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:flex flex-col w-full md:w-72 bg-purple-900 text-white shadow-2xl flex-shrink-0 z-10 md:sticky md:top-0 md:h-screen transition-all absolute md:relative`}>
+        <div className="p-6 hidden md:flex items-center border-b border-purple-800">
+          <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white mr-4 shadow-lg bg-black">
+             <img src={LOGO_URL} alt="Logo PGT" className="w-full h-full object-cover" onError={(e) => {e.target.src="https://placehold.co/100x100/4c1d95/fff?text=PGT"}} />
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold tracking-wider">PGT MU'ALLIMIN</h1>
+            <p className="text-purple-300 text-xs mt-1 bg-purple-800 inline-block px-2 py-0.5 rounded-full">Role: {user.role.toUpperCase()}</p>
+          </div>
+        </div>
+        
+        <nav className="flex-1 mt-4 px-4 space-y-2 pb-6 md:pb-0 overflow-y-auto">
+          <button 
+            onClick={() => {setActiveTab('attendance'); setIsMobileMenuOpen(false); setSearchQuery('');}}
+            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all ${activeTab === 'attendance' ? 'bg-white text-purple-900 font-bold shadow-md' : 'text-purple-100 hover:bg-purple-800'}`}
+          >
+            <ClipboardList className="mr-3" size={20} /> Input Absensi
+          </button>
+          
+          <button 
+            onClick={() => {setActiveTab('recap'); setIsMobileMenuOpen(false); setSearchQuery('');}}
+            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all ${activeTab === 'recap' ? 'bg-white text-purple-900 font-bold shadow-md' : 'text-purple-100 hover:bg-purple-800'}`}
+          >
+            <BarChart3 className="mr-3" size={20} /> Rekap Kehadiran
+          </button>
+
+          {user.role === 'admin' && (
+            <>
+              <button 
+                onClick={() => {setActiveTab('manage'); setIsMobileMenuOpen(false); setSearchQuery('');}}
+                className={`w-full flex items-center px-4 py-3 rounded-xl transition-all ${activeTab === 'manage' ? 'bg-white text-purple-900 font-bold shadow-md' : 'text-purple-100 hover:bg-purple-800'}`}
+              >
+                <Users className="mr-3" size={20} /> Data Anggota
+              </button>
+            </>
+          )}
+        </nav>
+
+        <div className="p-4 border-t border-purple-800 bg-purple-900">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center px-4 py-3 text-red-200 bg-purple-800/50 hover:bg-red-500 hover:text-white rounded-xl transition-colors font-medium"
+          >
+            <LogOut className="mr-2" size={18} /> Keluar Sistem
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-auto p-4 md:p-8 relative bg-gray-100/50">
+        
+        {showSuccessMsg && (
+          <div className="fixed top-20 md:top-8 right-4 md:right-8 z-50 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-xl flex items-center animate-bounce">
+            <CheckCircle2 size={24} className="mr-3" />
+            <div>
+              <p className="font-bold">Sukses!</p>
+              <p className="text-sm">Aksi berhasil disimpan.</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'attendance' && (
+          <div className="max-w-6xl mx-auto pb-20 md:pb-12">
+            
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="w-full md:w-auto">
+                <h2 className="text-2xl font-extrabold text-gray-900">Absensi Harian</h2>
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={16} className="text-gray-400" />
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Cari nama atau kelas..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-2 w-full md:w-64 border border-gray-300 rounded-xl focus:ring-purple-500 focus:border-purple-500 text-sm"
+                  />
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <button 
+                  onClick={handleMarkAllPresent}
+                  className="flex items-center justify-center px-4 py-2.5 bg-green-100 text-green-800 font-semibold rounded-xl hover:bg-green-200 transition-colors border border-green-200"
+                  title="Tandai semua anggota di daftar ini hadir"
+                >
+                  <CheckSquare size={18} className="mr-2" /> Tandai Semua Hadir
+                </button>
+                <input 
+                  type="date" 
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-300 rounded-xl shadow-sm focus:ring-purple-500 focus:border-purple-500 font-medium text-gray-700 bg-gray-50"
+                />
+                <select 
+                  value={selectedSection}
+                  onChange={(e) => setSelectedSection(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-300 rounded-xl shadow-sm focus:ring-purple-500 focus:border-purple-500 bg-white font-medium text-gray-700"
+                >
+                  {sections.map(sec => <option key={sec} value={sec}>{sec === 'All' ? 'Semua Section' : `Section: ${sec}`}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+                <span className="text-xs font-semibold text-gray-500 uppercase">Ditampilkan</span>
+                <span className="text-2xl font-bold text-gray-900">{filteredStudents.length} <span className="text-sm font-normal text-gray-500">anggota</span></span>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-2xl shadow-sm border border-purple-100 flex flex-col">
+                <span className="text-xs font-semibold text-purple-600 uppercase">Sudah Diabsen</span>
+                <span className="text-2xl font-bold text-purple-900">{recordedCount}</span>
+              </div>
+              <div className="bg-green-50 p-4 rounded-2xl shadow-sm border border-green-100 flex flex-col">
+                <span className="text-xs font-semibold text-green-600 uppercase">Hadir</span>
+                <span className="text-2xl font-bold text-green-700">{presentCount}</span>
+              </div>
+              <div className="bg-red-50 p-4 rounded-2xl shadow-sm border border-red-100 flex flex-col">
+                <span className="text-xs font-semibold text-red-600 uppercase">Tidak Hadir</span>
+                <span className="text-2xl font-bold text-red-700">{recordedCount - presentCount}</span>
+              </div>
+            </div>
+
+            <div className="bg-transparent md:bg-white md:rounded-2xl md:shadow-sm md:border md:border-gray-100 overflow-hidden flex flex-col">
+              
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Pemain</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Kehadiran</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Catatan Halangan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {filteredStudents.map((student) => {
+                      const record = getCurrentRecord(student.id);
+                      return (
+                        <tr key={student.id} className="hover:bg-purple-50/50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="font-bold text-gray-900">{student.name}</div>
+                            <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                              <span className="bg-gray-100 px-2 py-0.5 rounded">Kls: {student.kelas}</span>
+                              <span className="bg-gray-100 px-2 py-0.5 rounded">Asrama: {student.asrama}</span>
+                              <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">{student.section}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="inline-flex rounded-lg shadow-sm border border-gray-200 p-1 bg-gray-50" role="group">
+                              {['Hadir', 'Sakit', 'Izin', 'Alfa'].map(status => (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  onClick={() => handleSaveAttendance(student.id, status, record.note)}
+                                  className={`px-4 py-2 text-sm font-bold rounded-md transition-all
+                                    ${record.status === status 
+                                      ? (status === 'Hadir' ? 'bg-green-500 text-white shadow-md' : 
+                                         status === 'Sakit' ? 'bg-yellow-500 text-white shadow-md' : 
+                                         status === 'Izin' ? 'bg-blue-500 text-white shadow-md' : 
+                                         'bg-red-500 text-white shadow-md') 
+                                      : 'bg-transparent text-gray-500 hover:bg-gray-200'}`}
+                                >
+                                  {status}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="text" 
+                              placeholder="Ketik catatan..."
+                              value={record.note}
+                              onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)}
+                              className="w-full text-sm px-4 py-2 border border-gray-200 rounded-lg focus:ring-purple-500 focus:border-purple-500 bg-gray-50"
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="md:hidden space-y-4">
+                {filteredStudents.map((student) => {
+                  const record = getCurrentRecord(student.id);
+                  const isFilled = record.status !== '';
+                  return (
+                    <div key={student.id} className={`bg-white p-5 rounded-2xl shadow-sm border-l-4 transition-all ${isFilled ? (record.status === 'Hadir' ? 'border-green-500' : record.status === 'Alfa' ? 'border-red-500' : 'border-yellow-500') : 'border-gray-200'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="font-bold text-gray-900 text-lg">{student.name}</div>
+                          <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-1.5">
+                            <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600">Kls: {student.kelas}</span>
+                            <span className="bg-purple-100 text-purple-700 px-2 py-0.5 rounded font-medium">{student.section}</span>
+                          </div>
+                        </div>
+                        {isFilled && <CheckCircle2 size={20} className={record.status === 'Hadir' ? 'text-green-500' : 'text-gray-400'} />}
+                      </div>
+
+                      <div className="flex gap-2 mb-3">
+                         {['Hadir', 'Sakit', 'Izin', 'Alfa'].map(status => (
+                            <button
+                              key={status}
+                              onClick={() => handleSaveAttendance(student.id, status, record.note)}
+                              className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all border
+                                ${record.status === status 
+                                  ? (status === 'Hadir' ? 'bg-green-500 text-white border-green-500 shadow-md' : 
+                                     status === 'Sakit' ? 'bg-yellow-500 text-white border-yellow-500 shadow-md' : 
+                                     status === 'Izin' ? 'bg-blue-500 text-white border-blue-500 shadow-md' : 
+                                     'bg-red-500 text-white border-red-500 shadow-md') 
+                                  : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                            >
+                              {status.charAt(0)}
+                            </button>
+                          ))}
+                      </div>
+
+                      <input 
+                        type="text" 
+                        placeholder="Tambahkan catatan/halangan..."
+                        value={record.note}
+                        onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)}
+                        className="w-full text-sm px-4 py-3 border border-gray-200 rounded-xl focus:ring-purple-500 focus:border-purple-500 bg-gray-50"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+
+              {filteredStudents.length === 0 && (
+                <div className="text-center py-12 text-gray-500 bg-white rounded-2xl md:rounded-none">
+                  {searchQuery ? 'Pencarian tidak ditemukan.' : 'Tidak ada pemain di section ini.'}
+                </div>
+              )}
+              
+              <div className="fixed bottom-4 left-4 right-4 md:static md:bottom-0 md:bg-gray-50 p-0 md:p-4 md:border-t border-gray-200 flex justify-end z-30">
+                <button 
+                  onClick={showToast}
+                  className="w-full md:w-auto flex items-center justify-center px-6 py-4 md:py-3 bg-purple-800 text-white font-bold rounded-2xl md:rounded-xl shadow-xl md:shadow-md hover:bg-purple-900 transition-colors focus:ring-4 focus:ring-purple-300 focus:outline-none"
+                >
+                  <Save size={22} className="mr-2" />
+                  Simpan Data Absensi
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'recap' && (
+          <div className="max-w-6xl mx-auto">
+            
+            <div className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 rounded-2xl shadow-lg p-6 mb-8 text-white relative overflow-hidden">
+              <div className="absolute right-0 top-0 opacity-20 transform translate-x-4 translate-y-[-20%]">
+                <Trophy size={150} />
+              </div>
+              <h3 className="text-lg font-bold flex items-center mb-4"><Trophy size={20} className="mr-2"/> Section Paling Rajin (Leaderboard)</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
+                {sectionLeaderboard.slice(0, 3).map((board, index) => (
+                  <div key={board.section} className="bg-white/20 backdrop-blur-sm rounded-xl p-4 flex items-center justify-between border border-white/30">
+                    <div className="flex items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-yellow-600 mr-3 ${index === 0 ? 'bg-yellow-100' : index === 1 ? 'bg-gray-200' : 'bg-orange-200'}`}>
+                        #{index + 1}
+                      </div>
+                      <span className="font-bold text-lg">{board.section}</span>
+                    </div>
+                    <span className="font-extrabold text-xl">{board.average}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <div className="w-full md:w-auto">
+                <h2 className="text-2xl font-extrabold text-gray-900">Rekap Kehadiran Anggota</h2>
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={16} className="text-gray-400" />
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Cari nama anggota..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-2 w-full md:w-64 border border-gray-300 rounded-xl focus:ring-purple-500 focus:border-purple-500 text-sm"
+                  />
+                </div>
+              </div>
+              <button 
+                onClick={exportToExcel}
+                className="flex items-center w-full sm:w-auto justify-center px-5 py-2.5 bg-green-600 text-white font-semibold rounded-xl shadow-md hover:bg-green-700 transition-colors"
+              >
+                <Download size={18} className="mr-2" /> Export to Excel
+              </button>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="p-4 bg-yellow-50 border-b border-yellow-100 flex items-center text-yellow-800 text-sm">
+                <AlertCircle size={20} className="mr-3 flex-shrink-0" />
+                <p>Pemain dengan kehadiran <strong>di bawah 80%</strong> disorot warna merah sebagai bahan evaluasi pelatih.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Nama Pemain</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Section</th>
+                      <th className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">% Hadir</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Catatan Terkumpul</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {recapData.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map((student) => {
+                      const isWarning = student.percentage < 80;
+                      return (
+                        <tr key={student.id} className={isWarning ? 'bg-red-50/70' : 'hover:bg-purple-50/30'}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className={`font-bold ${isWarning ? 'text-red-800' : 'text-gray-900'}`}>{student.name}</div>
+                            <div className="text-xs text-gray-500 mt-1">Kls: {student.kelas} | Asrama: {student.asrama}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-purple-700">{student.section}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex flex-col items-center">
+                              <span className={`px-3 py-1 inline-flex text-sm font-bold rounded-lg ${isWarning ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+                                {student.percentage}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className={`px-6 py-4 text-sm ${isWarning ? 'text-red-700' : 'text-gray-600'}`}>
+                            {isWarning && student.notes === '' ? 
+                              <span className="flex items-center"><AlertCircle size={14} className="mr-1"/> Perlu teguran (Sering Alfa)</span> : 
+                              student.notes || '-'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'manage' && user.role === 'admin' && (
+          <div className="max-w-6xl mx-auto">
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <div className="w-full md:w-auto">
+                <h2 className="text-2xl font-extrabold text-gray-900">Database Anggota</h2>
+                <div className="relative mt-2">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search size={16} className="text-gray-400" />
+                  </div>
+                  <input 
+                    type="text" 
+                    placeholder="Cari anggota..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 pr-4 py-2 w-full md:w-64 border border-gray-300 rounded-xl focus:ring-purple-500 focus:border-purple-500 text-sm"
+                  />
+                </div>
+              </div>
+              <button className="flex items-center w-full sm:w-auto justify-center px-5 py-2.5 bg-purple-800 text-white font-semibold rounded-xl shadow-md hover:bg-purple-900 transition-colors">
+                <UserPlus size={18} className="mr-2" /> Tambah Anggota Baru
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map(s => (
+                <div key={s.id} className="bg-white border border-gray-100 p-5 rounded-2xl flex justify-between items-center shadow-sm hover:shadow-md transition-shadow">
+                  <div>
+                    <div className="font-bold text-gray-900">{s.name}</div>
+                    <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                      <span className="text-purple-600 font-semibold">{s.section}</span>
+                      <span>•</span>
+                      <span>Kls {s.kelas}</span>
+                    </div>
+                  </div>
+                  <button className="text-red-400 hover:text-white hover:bg-red-500 p-2 rounded-lg transition-colors">
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
