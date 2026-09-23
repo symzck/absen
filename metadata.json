@@ -1,0 +1,6 @@
+{
+  "name": "PGT Mu'allimin - Sistem Absensi Terpadu",
+  "description": "Aplikasi Sistem Absensi Terpadu PGT Mu'allimin Jogja untuk pencatatan kehadiran anggota, rekapitulasi kehadiran, leaderboard section, dan pengelolaan data pemain marching band.",
+  "permissions": [],
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
