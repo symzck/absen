@@ -5,11 +5,12 @@ import {
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key
 } from 'lucide-react';
+import officialLogo from './assets/logo.png';
 
 // ==========================================
 // LOGO RESMI PGT MU'ALLIMIN (DITETAPKAN SECARA PERMANEN)
 // ==========================================
-export const OFFICIAL_LOGO_URL = "/image.png";
+export const OFFICIAL_LOGO_URL = officialLogo;
 
 // --- DATA STRUKTUR APLIKASI ---
 interface Student {
