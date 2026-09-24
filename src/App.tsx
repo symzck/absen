@@ -3,9 +3,27 @@ import {
   Users, ClipboardList, BarChart3, LogOut, Download, 
   UserPlus, Trash2, CheckCircle2, AlertCircle, Menu, X, Save,
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
-  Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key
+  Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
+  Calendar, RefreshCw, FileEdit, Award, BookmarkCheck,
+  RotateCcw, ChevronDown, ChevronUp, CalendarDays, History, Layers
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
+
+// Helper Format Tanggal Bahasa Indonesia
+const formatIndonesianDate = (dateStr: string) => {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  } catch {
+    return dateStr;
+  }
+};
 
 // ==========================================
 // LOGO RESMI PGT MU'ALLIMIN (DITETAPKAN SECARA PERMANEN)
@@ -37,13 +55,13 @@ export interface SystemUser {
   username: string;
   password: string;
   fullName: string;
-  role: 'admin' | 'petugas';
+  role: 'admin' | 'petugas' | 'pelatih';
   assignedSection: string; // 'All' | 'Brass' | 'Cologuard' | 'Battery' | 'Pit'
   createdAt: string;
 }
 
 // Akun Bawaan Sistem:
-// Admin awal disiapkan secara aman. Admin dapat mengubah kata sandi sendiri kapan saja.
+// Administrator, Pelatih (dengan wewenang edit data input), dan Petugas Lapangan.
 const INITIAL_USERS: SystemUser[] = [
   {
     id: 'admin-master',
@@ -54,6 +72,53 @@ const INITIAL_USERS: SystemUser[] = [
     assignedSection: 'All',
     createdAt: '2026-09-23'
   },
+  // AKUN PELATIH (HAK AKSES KHUSUS UNTUK MENGEDIT & MENGOREKSI DATA INPUT)
+  {
+    id: 'user-pelatih-utama',
+    username: 'pelatih',
+    password: 'pelatih123',
+    fullName: 'Ust. H. Ahmad Fauzi (Head Coach / Pelatih Utama)',
+    role: 'pelatih',
+    assignedSection: 'All',
+    createdAt: '2026-09-23'
+  },
+  {
+    id: 'user-pelatih-brass',
+    username: 'pelatih_brass',
+    password: 'brasspelatih',
+    fullName: 'Ust. Rizky Pratama (Pelatih Section Brass)',
+    role: 'pelatih',
+    assignedSection: 'Brass',
+    createdAt: '2026-09-23'
+  },
+  {
+    id: 'user-pelatih-battery',
+    username: 'pelatih_battery',
+    password: 'batterypelatih',
+    fullName: 'Ust. Bima Sakti (Pelatih Section Battery)',
+    role: 'pelatih',
+    assignedSection: 'Battery',
+    createdAt: '2026-09-23'
+  },
+  {
+    id: 'user-pelatih-cg',
+    username: 'pelatih_cg',
+    password: 'cgpelatih',
+    fullName: 'Ust. Hendra Wijaya (Pelatih Section Cologuard)',
+    role: 'pelatih',
+    assignedSection: 'Cologuard',
+    createdAt: '2026-09-23'
+  },
+  {
+    id: 'user-pelatih-pit',
+    username: 'pelatih_pit',
+    password: 'pitpelatih',
+    fullName: 'Ust. Danang Surya (Pelatih Section Pit)',
+    role: 'pelatih',
+    assignedSection: 'Pit',
+    createdAt: '2026-09-23'
+  },
+  // AKUN PETUGAS LAPANGAN
   {
     id: 'user-petugas-umum',
     username: 'petugas',
@@ -98,6 +163,49 @@ const INITIAL_USERS: SystemUser[] = [
     role: 'petugas',
     assignedSection: 'Pit',
     createdAt: '2026-09-23'
+  }
+];
+
+// Data Presensi Awal yang telah diinput petugas (Siap Ditinjau & Diedit oleh Pelatih)
+const INITIAL_ATTENDANCES: DailyAttendance[] = [
+  {
+    date: '2026-09-23',
+    records: [
+      { studentId: 1, status: 'Hadir', note: '' },
+      { studentId: 2, status: 'Hadir', note: '' },
+      { studentId: 3, status: 'Sakit', note: 'Demam di asrama B' },
+      { studentId: 4, status: 'Hadir', note: '' },
+      { studentId: 5, status: 'Izin', note: 'Bimbingan kelas tahfidz' },
+      { studentId: 6, status: 'Hadir', note: '' },
+      { studentId: 7, status: 'Hadir', note: '' },
+      { studentId: 8, status: 'Alfa', note: 'Belum ada konfirmasi kehadiran' },
+      { studentId: 9, status: 'Hadir', note: '' },
+      { studentId: 10, status: 'Hadir', note: '' },
+      { studentId: 17, status: 'Hadir', note: '' },
+      { studentId: 18, status: 'Sakit', note: 'Cedera ringan di pergelangan tangan' },
+      { studentId: 19, status: 'Hadir', note: '' },
+      { studentId: 27, status: 'Hadir', note: '' },
+      { studentId: 28, status: 'Hadir', note: '' },
+      { studentId: 29, status: 'Izin', note: 'Izin tugas pengurus asrama D' },
+      { studentId: 38, status: 'Hadir', note: '' },
+      { studentId: 39, status: 'Hadir', note: '' }
+    ]
+  },
+  {
+    date: '2026-09-22',
+    records: [
+      { studentId: 1, status: 'Hadir', note: '' },
+      { studentId: 2, status: 'Hadir', note: '' },
+      { studentId: 3, status: 'Hadir', note: '' },
+      { studentId: 4, status: 'Hadir', note: '' },
+      { studentId: 5, status: 'Hadir', note: '' },
+      { studentId: 6, status: 'Hadir', note: '' },
+      { studentId: 7, status: 'Izin', note: 'Tugas piket madrasah' },
+      { studentId: 8, status: 'Hadir', note: '' },
+      { studentId: 17, status: 'Hadir', note: '' },
+      { studentId: 27, status: 'Hadir', note: '' },
+      { studentId: 38, status: 'Hadir', note: '' }
+    ]
   }
 ];
 
@@ -158,7 +266,19 @@ export default function App() {
   // Authentication & Users State
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>(() => {
     const saved = localStorage.getItem('pgt_system_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (!saved) return INITIAL_USERS;
+    try {
+      const parsed: SystemUser[] = JSON.parse(saved);
+      // Ensure initial Pelatih accounts exist even if an older localStorage was cached
+      const hasPelatih = parsed.some(u => u.role === 'pelatih' || u.username === 'pelatih');
+      if (!hasPelatih) {
+        const pelatihUsers = INITIAL_USERS.filter(u => u.role === 'pelatih');
+        return [...parsed, ...pelatihUsers];
+      }
+      return parsed;
+    } catch {
+      return INITIAL_USERS;
+    }
   });
 
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
@@ -168,9 +288,11 @@ export default function App() {
 
   // Navigation Tab State
   // Petugas: 'attendance' | 'my_history'
+  // Pelatih: 'edit_history' | 'attendance' | 'recap' | 'members'
   // Admin: 'admin_dashboard' | 'recap' | 'members' | 'manage_users'
   const [adminTab, setAdminTab] = useState<'admin_dashboard' | 'recap' | 'members' | 'manage_users'>('admin_dashboard');
   const [petugasTab, setPetugasTab] = useState<'attendance' | 'my_history'>('attendance');
+  const [pelatihTab, setPelatihTab] = useState<'edit_history' | 'attendance' | 'recap' | 'members'>('edit_history');
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -188,13 +310,26 @@ export default function App() {
 
   const [attendances, setAttendances] = useState<DailyAttendance[]>(() => {
     const saved = localStorage.getItem('pgt_attendances');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return INITIAL_ATTENDANCES;
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : INITIAL_ATTENDANCES;
+    } catch {
+      return INITIAL_ATTENDANCES;
+    }
   });
 
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSection, setSelectedSection] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [recapFilter, setRecapFilter] = useState<'all' | 'warning' | 'safe'>('all');
+
+  // Rekap Per Latihan & Reset State
+  const [recapSubTab, setRecapSubTab] = useState<'per_session' | 'cumulative'>('per_session');
+  const [expandedSessionDate, setExpandedSessionDate] = useState<string | null>(null);
+  const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Modal: Add New Member
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
@@ -203,13 +338,33 @@ export default function App() {
   const [newStudentAsrama, setNewStudentAsrama] = useState('A');
   const [newStudentSection, setNewStudentSection] = useState('Brass');
 
+  // Modal: Edit Member (For Pelatih & Admin)
+  const [isEditStudentModalOpen, setIsEditStudentModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editStudentName, setEditStudentName] = useState('');
+  const [editStudentKelas, setEditStudentKelas] = useState('');
+  const [editStudentAsrama, setEditStudentAsrama] = useState('A');
+  const [editStudentSection, setEditStudentSection] = useState('Brass');
+
+  // Modal: Detailed Edit Attendance Record (For Pelatih & Admin)
+  const [isEditRecordModalOpen, setIsEditRecordModalOpen] = useState(false);
+  const [editingRecordTarget, setEditingRecordTarget] = useState<{
+    studentId: number;
+    studentName: string;
+    section: string;
+    kelas: string;
+    date: string;
+    status: string;
+    note: string;
+  } | null>(null);
+
   // Modal: Add / Edit System User (Admin Only)
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [userFormUsername, setUserFormUsername] = useState('');
   const [userFormPassword, setUserFormPassword] = useState('');
   const [userFormFullName, setUserFormFullName] = useState('');
-  const [userFormRole, setUserFormRole] = useState<'admin' | 'petugas'>('petugas');
+  const [userFormRole, setUserFormRole] = useState<'admin' | 'petugas' | 'pelatih'>('petugas');
   const [userFormSection, setUserFormSection] = useState('All');
   const [showUserFormPass, setShowUserFormPass] = useState(false);
 
@@ -239,9 +394,9 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // If officer logs in with assigned section, preset the section filter
+  // If officer or coach logs in with assigned section, preset the section filter
   useEffect(() => {
-    if (currentUser && currentUser.role === 'petugas' && currentUser.assignedSection !== 'All') {
+    if (currentUser && currentUser.assignedSection !== 'All') {
       setSelectedSection(currentUser.assignedSection);
     }
   }, [currentUser]);
@@ -271,6 +426,12 @@ export default function App() {
       if (matchedUser.role === 'admin') {
         setAdminTab('admin_dashboard');
         triggerToast(`Selamat datang, Administrator (${matchedUser.fullName})!`);
+      } else if (matchedUser.role === 'pelatih') {
+        setPelatihTab('edit_history');
+        if (matchedUser.assignedSection !== 'All') {
+          setSelectedSection(matchedUser.assignedSection);
+        }
+        triggerToast(`Selamat datang, Coach ${matchedUser.fullName}! Akses edit data presensi aktif.`);
       } else {
         setPetugasTab('attendance');
         if (matchedUser.assignedSection !== 'All') {
@@ -317,7 +478,7 @@ export default function App() {
     const cleanPass = userFormPassword.trim();
 
     if (!cleanUsername || !cleanFullName || !cleanPass) {
-      alert('Mohon lengkapi seluruh kolom input.');
+      triggerToast('Mohon lengkapi seluruh kolom input.');
       return;
     }
 
@@ -326,7 +487,7 @@ export default function App() {
       u => u.username.toLowerCase() === cleanUsername && u.id !== editingUserId
     );
     if (existing) {
-      alert('Username tersebut sudah digunakan oleh pengguna lain. Harap gunakan username lain.');
+      triggerToast('Username tersebut sudah digunakan oleh pengguna lain. Harap gunakan username lain.');
       return;
     }
 
@@ -379,31 +540,34 @@ export default function App() {
 
   const handleDeleteUser = (userId: string, userName: string) => {
     if (userId === currentUser?.id) {
-      alert('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk.');
+      triggerToast('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk.');
       return;
     }
     const adminCount = systemUsers.filter(u => u.role === 'admin').length;
     const targetUser = systemUsers.find(u => u.id === userId);
     if (targetUser?.role === 'admin' && adminCount <= 1) {
-      alert('Tidak dapat menghapus akun admin terakhir. Minimal harus ada 1 akun Administrator.');
+      triggerToast('Tidak dapat menghapus akun admin terakhir. Minimal harus ada 1 akun Administrator.');
       return;
     }
 
-    if (confirm(`Apakah Anda yakin ingin menghapus akun "${userName}"? Akun ini tidak akan bisa login lagi.`)) {
-      setSystemUsers(prev => prev.filter(u => u.id !== userId));
-      triggerToast(`Akun "${userName}" telah dihapus.`);
-    }
+    setUserToDelete({ id: userId, name: userName });
+  };
+
+  const confirmDeleteUser = (userId: string, userName: string) => {
+    setSystemUsers(prev => prev.filter(u => u.id !== userId));
+    setUserToDelete(null);
+    triggerToast(`Akun "${userName}" telah dihapus.`);
   };
 
   // Change Admin Password (Secret setting)
   const handleChangeAdminPassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAdminPass.trim()) {
-      alert('Kata sandi baru tidak boleh kosong.');
+      triggerToast('Kata sandi baru tidak boleh kosong.');
       return;
     }
     if (newAdminPass !== confirmAdminPass) {
-      alert('Konfirmasi kata sandi tidak cocok. Silakan ketik ulang.');
+      triggerToast('Konfirmasi kata sandi tidak cocok. Silakan ketik ulang.');
       return;
     }
 
@@ -422,14 +586,14 @@ export default function App() {
     }
   };
 
-  // Attendance Handlers
-  const handleSaveAttendance = (studentId: number, status: string, note: string) => {
+  // Attendance Handlers with Multi-Date Edit Capability for Pelatih & Admin
+  const handleSaveAttendanceForDate = (date: string, studentId: number, status: string, note: string) => {
     setAttendances(prev => {
-      let dateIndex = prev.findIndex(a => a.date === selectedDate);
+      let dateIndex = prev.findIndex(a => a.date === date);
       let newData = [...prev];
 
       if (dateIndex === -1) {
-        newData.push({ date: selectedDate, records: [{ studentId, status, note }] });
+        newData.push({ date, records: [{ studentId, status, note }] });
       } else {
         let recordIndex = newData[dateIndex].records.findIndex(r => r.studentId === studentId);
         if (recordIndex === -1) {
@@ -440,6 +604,111 @@ export default function App() {
       }
       return newData;
     });
+  };
+
+  const handleSaveAttendance = (studentId: number, status: string, note: string) => {
+    handleSaveAttendanceForDate(selectedDate, studentId, status, note);
+  };
+
+  // Delete/Clear single student attendance record on specific date (For Pelatih correction)
+  const handleDeleteAttendanceRecord = (date: string, studentId: number, studentName: string) => {
+    setAttendances(prev => {
+      return prev.map(day => {
+        if (day.date === date) {
+          return {
+            ...day,
+            records: day.records.filter(r => r.studentId !== studentId)
+          };
+        }
+        return day;
+      });
+    });
+    triggerToast(`Rekord kehadiran ${studentName} tanggal ${date} berhasil dihapus.`);
+  };
+
+  // Delete/Reset an entire training session from recap (For Pelatih & Admin)
+  const handleDeleteSession = (date: string) => {
+    setSessionToDelete(date);
+  };
+
+  const confirmDeleteSession = (date: string) => {
+    setAttendances(prev => prev.filter(day => day.date !== date));
+    if (expandedSessionDate === date) {
+      setExpandedSessionDate(null);
+    }
+    setSessionToDelete(null);
+    triggerToast(`Data presensi sesi latihan ${date} berhasil dihapus dari rekap.`);
+  };
+
+  // Reset entire recap (Kosongkan semua sesi latihan)
+  const handleResetAllRecap = () => {
+    setAttendances([]);
+    setIsResetConfirmModalOpen(false);
+    setExpandedSessionDate(null);
+    triggerToast('Seluruh data rekap presensi berhasil direset menjadi kosong (0 sesi).');
+  };
+
+  // Restore initial simulation recap
+  const handleRestoreInitialRecap = () => {
+    setAttendances(INITIAL_ATTENDANCES);
+    setIsResetConfirmModalOpen(false);
+    setExpandedSessionDate(null);
+    triggerToast('Data simulasi presensi awal berhasil dipulihkan.');
+  };
+
+  // Open detailed edit modal for an attendance record
+  const handleOpenEditRecord = (student: Student, date: string) => {
+    const dayData = attendances.find(a => a.date === date);
+    const rec = dayData?.records.find(r => r.studentId === student.id) || { status: '', note: '' };
+    setEditingRecordTarget({
+      studentId: student.id,
+      studentName: student.name,
+      section: student.section,
+      kelas: student.kelas,
+      date,
+      status: rec.status,
+      note: rec.note
+    });
+    setIsEditRecordModalOpen(true);
+  };
+
+  const handleSaveEditRecordModal = (status: string, note: string) => {
+    if (!editingRecordTarget) return;
+    handleSaveAttendanceForDate(editingRecordTarget.date, editingRecordTarget.studentId, status, note);
+    setIsEditRecordModalOpen(false);
+    triggerToast(`Koreksi data presensi ${editingRecordTarget.studentName} (${editingRecordTarget.date}) berhasil disimpan!`);
+  };
+
+  // Student Member Edit Handlers (For Pelatih & Admin)
+  const handleOpenEditStudent = (student: Student) => {
+    setEditingStudent(student);
+    setEditStudentName(student.name);
+    setEditStudentKelas(student.kelas);
+    setEditStudentAsrama(student.asrama);
+    setEditStudentSection(student.section);
+    setIsEditStudentModalOpen(true);
+  };
+
+  const handleSaveEditStudent = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent || !editStudentName.trim()) return;
+
+    setStudents(prev => prev.map(s => {
+      if (s.id === editingStudent.id) {
+        return {
+          ...s,
+          name: editStudentName.trim(),
+          kelas: editStudentKelas.trim() || '1A',
+          asrama: editStudentAsrama,
+          section: editStudentSection,
+        };
+      }
+      return s;
+    }));
+
+    setIsEditStudentModalOpen(false);
+    setEditingStudent(null);
+    triggerToast(`Data pemain "${editStudentName}" berhasil diperbarui!`);
   };
 
   const handleMarkAllPresent = () => {
@@ -469,10 +738,54 @@ export default function App() {
     triggerToast(`Semua anggota ${selectedSection === 'All' ? 'aktif' : selectedSection} ditandai Hadir!`);
   };
 
-  const getCurrentRecord = (studentId: number) => {
-    const dateData = attendances.find(a => a.date === selectedDate);
+  const getRecordForDate = (studentId: number, date: string) => {
+    const dateData = attendances.find(a => a.date === date);
     return dateData?.records.find(r => r.studentId === studentId) || { status: '', note: '' };
   };
+
+  const getCurrentRecord = (studentId: number) => {
+    return getRecordForDate(studentId, selectedDate);
+  };
+
+  // Distinct dates that have recorded attendance sessions
+  const recordedDates = useMemo(() => {
+    const set = new Set<string>();
+    attendances.forEach(a => {
+      if (a.records && a.records.length > 0) {
+        set.add(a.date);
+      }
+    });
+    // Ensure selectedDate is available
+    set.add(selectedDate);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [attendances, selectedDate]);
+
+  // Rekapitulasi per sesi latihan harian
+  const trainingSessionsRecap = useMemo(() => {
+    return attendances
+      .filter(session => session.records && session.records.length > 0)
+      .map(session => {
+        const records = session.records;
+        const hadirCount = records.filter(r => r.status === 'Hadir').length;
+        const sakitCount = records.filter(r => r.status === 'Sakit').length;
+        const izinCount = records.filter(r => r.status === 'Izin').length;
+        const alfaCount = records.filter(r => r.status === 'Alfa').length;
+        const totalFilled = records.length;
+        const rate = totalFilled > 0 ? Math.round((hadirCount / totalFilled) * 100) : 0;
+
+        return {
+          date: session.date,
+          records,
+          totalFilled,
+          hadirCount,
+          sakitCount,
+          izinCount,
+          alfaCount,
+          rate
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [attendances]);
 
   const recapData = useMemo(() => {
     const totalDays = attendances.length || 1;
@@ -680,7 +993,7 @@ export default function App() {
             </form>
 
             <div className="mt-5 pt-4 border-t border-slate-800/80 text-center text-slate-500 text-[11px]">
-              Sistem mengenali hak akses Anda secara otomatis (Petugas atau Administrator) berdasarkan akun yang Anda masukkan.
+              Sistem mengenali hak akses Anda secara otomatis (Petugas, Pelatih, atau Administrator).
             </div>
           </div>
         </div>
@@ -1026,7 +1339,9 @@ export default function App() {
   }
 
   // =========================================================================
-  // VIEW 3: HALAMAN UTAMA ADMINISTRATOR (SUPER ADMIN CONSOLE)
+  // VIEW 3: HALAMAN UTAMA (ADMINISTRATOR & PELATIH)
+  // Presensi seluruh sesi, koreksi data, rekapitulasi, database pemain, kelola petugas
+  // =========================================================================
   // Dilengkapi manajemen user (tambah/hapus/reset petugas) & ganti password admin rahasia
   // =========================================================================
   return (
@@ -1044,8 +1359,12 @@ export default function App() {
             />
           </div>
           <div>
-            <div className="font-extrabold text-sm text-white leading-tight">ADMIN PGT MU'ALLIMIN</div>
-            <div className="text-[11px] text-amber-400">Pusat Kontrol Utama</div>
+            <div className="font-extrabold text-sm text-white leading-tight">
+              {currentUser.role === 'admin' ? "ADMIN PGT MU'ALLIMIN" : "PORTAL PELATIH PGT"}
+            </div>
+            <div className="text-[11px] text-amber-400">
+              {currentUser.role === 'admin' ? 'Pusat Kontrol Utama' : 'Pusat Koreksi & Presensi'}
+            </div>
           </div>
         </div>
         <button 
@@ -1056,7 +1375,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* Admin Sidebar Navigation */}
+      {/* Admin / Pelatih Sidebar Navigation */}
       <aside className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:flex flex-col w-full md:w-72 bg-slate-900/95 border-r border-slate-800 text-slate-200 flex-shrink-0 z-20 md:sticky md:top-0 md:h-screen transition-all absolute md:relative shadow-2xl`}>
         {/* Brand Banner */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
@@ -1072,31 +1391,39 @@ export default function App() {
             <div>
               <h2 className="text-base font-extrabold text-white leading-tight">PGT MU'ALLIMIN</h2>
               <div className="flex items-center gap-1.5 mt-1">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  SUPER ADMINISTRATOR
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                  currentUser.role === 'admin'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                }`}>
+                  {currentUser.role === 'admin' ? 'SUPER ADMINISTRATOR' : 'PELATIH MARCHING BAND'}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Secret Admin Key Quick Action */}
-        <div className="px-3 pt-3">
-          <button
-            type="button"
-            onClick={() => setIsAdminPassModalOpen(true)}
-            className="w-full py-2 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-xs text-amber-300 flex items-center justify-between font-semibold transition-all"
-          >
-            <span className="flex items-center gap-2">
-              <Key size={14} className="text-amber-400" /> Kunci Password Admin
-            </span>
-            <span className="text-[10px] text-purple-300 font-mono">Ubah</span>
-          </button>
-        </div>
+        {/* Secret Admin Key Quick Action (Only for Admin) */}
+        {currentUser.role === 'admin' && (
+          <div className="px-3 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsAdminPassModalOpen(true)}
+              className="w-full py-2 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-xs text-amber-300 flex items-center justify-between font-semibold transition-all"
+            >
+              <span className="flex items-center gap-2">
+                <Key size={14} className="text-amber-400" /> Kunci Password Admin
+              </span>
+              <span className="text-[10px] text-purple-300 font-mono">Ubah</span>
+            </button>
+          </div>
+        )}
 
-        {/* Admin Nav */}
+        {/* Navigation */}
         <nav className="flex-1 mt-3 px-3 space-y-1.5 overflow-y-auto">
-          <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Menu Administrator</div>
+          <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            {currentUser.role === 'admin' ? 'Menu Administrator' : 'Menu Pelatih'}
+          </div>
           
           <button 
             onClick={() => { setAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
@@ -1130,22 +1457,25 @@ export default function App() {
             <Trophy size={14} className="text-amber-400" />
           </button>
 
-          <button 
-            onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
-              adminTab === 'manage_users' 
-                ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
-                : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <UserCheck size={18} className={adminTab === 'manage_users' ? 'text-amber-400' : 'text-slate-400'} />
-              <span>Kelola User & Petugas</span>
-            </div>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold tabular-nums">
-              {systemUsers.length} User
-            </span>
-          </button>
+          {/* User & Staff Management (Admin Only) */}
+          {currentUser.role === 'admin' && (
+            <button 
+              onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                adminTab === 'manage_users' 
+                  ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                  : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <UserCheck size={18} className={adminTab === 'manage_users' ? 'text-amber-400' : 'text-slate-400'} />
+                <span>Kelola User & Petugas</span>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold tabular-nums">
+                {systemUsers.length} User
+              </span>
+            </button>
+          )}
 
           <button 
             onClick={() => { setAdminTab('members'); setIsMobileMenuOpen(false); }}
@@ -1169,26 +1499,30 @@ export default function App() {
         <div className="p-4 border-t border-slate-800 bg-slate-950/60">
           <div className="flex items-center justify-between mb-3 px-1">
             <div className="text-xs text-slate-400">
-              Admin: <strong className="text-amber-300 font-semibold">{currentUser.username}</strong>
+              {currentUser.role === 'admin' ? 'Admin:' : 'Pelatih:'} <strong className="text-amber-300 font-semibold">{currentUser.fullName || currentUser.username}</strong>
             </div>
-            <span className="text-[10px] text-emerald-400 font-mono">Privat</span>
+            <span className="text-[10px] text-emerald-400 font-mono">
+              {currentUser.role === 'admin' ? 'Master' : 'Koreksi Data'}
+            </span>
           </div>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs text-red-300 bg-red-950/30 hover:bg-red-900/50 hover:text-white rounded-xl border border-red-800/40 transition-colors font-semibold"
           >
-            <LogOut size={15} /> Keluar dari Admin
+            <LogOut size={15} /> Keluar dari Sistem
           </button>
         </div>
       </aside>
 
-      {/* Main Admin Viewport */}
+      {/* Main Viewport */}
       <main className="flex-1 flex flex-col min-w-0 bg-slate-950 overflow-y-auto">
         
         {/* Top Header */}
         <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/60 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md">
           <div className="text-xs text-slate-400 font-medium">
-            <span className="text-amber-400 font-bold">Admin Console</span>
+            <span className="text-amber-400 font-bold">
+              {currentUser.role === 'admin' ? 'Admin Console' : 'Portal Pelatih'}
+            </span>
             <span className="mx-2">/</span>
             <span className="text-slate-200 font-semibold">
               {adminTab === 'admin_dashboard' && 'Presensi Seluruh Sesi Marching Band'}
@@ -1199,19 +1533,33 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsAdminPassModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-              title="Ubah kata sandi rahasia admin"
-            >
-              <Key size={13} />
-              <span>Ganti Password Admin</span>
-            </button>
+            {currentUser.role === 'admin' ? (
+              <button
+                onClick={() => setIsAdminPassModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                title="Ubah kata sandi rahasia admin"
+              >
+                <Key size={13} />
+                <span>Ganti Password Admin</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-emerald-300 text-xs font-semibold">
+                <Sparkles size={13} className="text-amber-400" />
+                <span>Hak Koreksi & Edit Aktif</span>
+              </div>
+            )}
             <div className="h-4 w-[1px] bg-slate-800"></div>
             <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 font-mono">
               <Clock size={13} className="text-purple-400" />
               <span>{selectedDate}</span>
             </div>
+            <button
+              onClick={handleLogout}
+              className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded-xl border border-red-800/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+            >
+              <LogOut size={13} />
+              <span>Keluar</span>
+            </button>
           </div>
         </header>
 
@@ -1237,7 +1585,9 @@ export default function App() {
                     </div>
                     <h2 className="text-2xl font-extrabold text-white tracking-tight">Presensi Seluruh Sesi</h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Administrator dapat meninjau, mengoreksi, atau mencatat kehadiran untuk semua section instrumen.
+                      {currentUser.role === 'admin'
+                        ? 'Administrator dapat meninjau, mengoreksi data presensi petugas, atau mencatat kehadiran untuk semua section instrumen.'
+                        : 'Pelatih berwenang meninjau dan mengoreksi data presensi latihan untuk semua section atau tanggal berapapun.'}
                     </p>
                   </div>
 
@@ -1362,6 +1712,7 @@ export default function App() {
                         <th className="py-3 px-6">Nama Pemain & Data</th>
                         <th className="py-3 px-6 text-center">Status Presensi</th>
                         <th className="py-3 px-6">Catatan Halangan / Keterangan</th>
+                        <th className="py-3 px-4 text-center">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60 text-sm">
@@ -1421,6 +1772,28 @@ export default function App() {
                                 className="w-full text-xs px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
                               />
                             </td>
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditRecord(student, selectedDate)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded-lg transition-colors"
+                                  title="Edit / Koreksi Presensi"
+                                >
+                                  <FileEdit size={14} />
+                                </button>
+                                {record.status && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteAttendanceRecord(selectedDate, student.id, student.name)}
+                                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors"
+                                    title="Hapus Rekord Tanggal Ini"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                           </tr>
                         );
                       })}
@@ -1439,11 +1812,31 @@ export default function App() {
                             <div className="font-bold text-white text-sm">{student.name}</div>
                             <div className="text-[11px] text-slate-400">{student.section} · Kls {student.kelas}</div>
                           </div>
-                          {record.status && (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300">
-                              {record.status}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-1">
+                            {record.status && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300">
+                                {record.status}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditRecord(student, selectedDate)}
+                              className="p-1 text-slate-400 hover:text-amber-300"
+                              title="Edit / Koreksi Presensi"
+                            >
+                              <FileEdit size={13} />
+                            </button>
+                            {record.status && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAttendanceRecord(selectedDate, student.id, student.name)}
+                                className="p-1 text-slate-500 hover:text-rose-400"
+                                title="Hapus Rekord Tanggal Ini"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-4 gap-1">
@@ -1487,187 +1880,543 @@ export default function App() {
           {/* TAB 2: REKAPITULASI & LEADERBOARD */}
           {adminTab === 'recap' && (
             <div className="space-y-6 pb-20 md:pb-6">
-              {/* Podium Section Marching Band */}
-              <div className="bg-gradient-to-br from-slate-900 via-purple-950/70 to-slate-900 border border-purple-800/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden">
-                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 relative z-10">
+              
+              {/* Header Rekapitulasi & Navigasi Sub-Tab */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+                <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
                   <div>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-bold mb-2">
-                      <Trophy size={14} className="text-amber-400" />
-                      Leaderboard Disiplin Section PGT
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/80 border border-purple-700/50 text-purple-300 text-xs font-bold mb-2">
+                      <BarChart3 size={14} className="text-amber-400" />
+                      Pusat Evaluasi & Rekapitulasi Presensi
                     </div>
                     <h2 className="text-2xl font-black text-white tracking-tight">
-                      Peringkat Section Terdisiplin
+                      Rekapitulasi Presensi Marching Band
                     </h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Dihitung berdasarkan rata-rata persentase presensi latihan seluruh anggota di setiap instrumen.
+                    <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                      Pelatih dan Administrator dapat meninjau riwayat kehadiran per sesi latihan, mengoreksi rekap ketika terjadi kekeliruan data, serta mereset data rekapitulasi secara mandiri.
                     </p>
                   </div>
 
-                  <button 
-                    onClick={exportToExcel}
-                    className="self-start md:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all active:scale-95"
+                  {/* Top Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsResetConfirmModalOpen(true)}
+                      className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 shadow-md"
+                      title="Reset atau kosongkan data rekap"
+                    >
+                      <RotateCcw size={14} className="text-rose-400" />
+                      <span>Reset Rekap</span>
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={exportToExcel}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-950 transition-all active:scale-95"
+                    >
+                      <Download size={14} />
+                      <span>Export Excel / CSV</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sub-Tab Navigation */}
+                <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-slate-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setRecapSubTab('per_session')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      recapSubTab === 'per_session'
+                        ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white shadow-lg shadow-purple-950 border border-purple-500/60'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800/50'
+                    }`}
                   >
-                    <Download size={16} />
-                    <span>Export Rekap (CSV/Excel)</span>
+                    <CalendarDays size={15} className={recapSubTab === 'per_session' ? 'text-amber-300' : 'text-slate-400'} />
+                    <span>Rekap Per Sesi Latihan</span>
+                    <span className="px-2 py-0.5 rounded-full bg-black/40 text-[11px] font-mono font-bold text-amber-300 border border-purple-500/30">
+                      {trainingSessionsRecap.length} Sesi
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecapSubTab('cumulative')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                      recapSubTab === 'cumulative'
+                        ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white shadow-lg shadow-purple-950 border border-purple-500/60'
+                        : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800 hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <Trophy size={15} className={recapSubTab === 'cumulative' ? 'text-amber-300' : 'text-slate-400'} />
+                    <span>Leaderboard & Rekap Kumulatif</span>
                   </button>
                 </div>
+              </div>
 
-                {/* Podium Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 relative z-10">
-                  {sectionLeaderboard.map((board, index) => {
-                    const isFirst = index === 0;
-                    const isSecond = index === 1;
-                    const isThird = index === 2;
-
-                    return (
-                      <div 
-                        key={board.section}
-                        className={`p-4 rounded-2xl border transition-all ${
-                          isFirst 
-                            ? 'bg-gradient-to-b from-amber-500/20 to-slate-900/90 border-amber-400/60 shadow-lg shadow-amber-500/10' 
-                            : isSecond 
-                            ? 'bg-gradient-to-b from-slate-400/15 to-slate-900/90 border-slate-400/40' 
-                            : isThird
-                            ? 'bg-gradient-to-b from-amber-700/15 to-slate-900/90 border-amber-700/40'
-                            : 'bg-slate-900/70 border-slate-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
-                            isFirst ? 'bg-amber-400 text-slate-950 shadow-md' :
-                            isSecond ? 'bg-slate-300 text-slate-950' :
-                            isThird ? 'bg-amber-700 text-white' :
-                            'bg-slate-800 text-slate-400'
-                          }`}>
-                            #{index + 1}
-                          </span>
-                          <span className="text-[11px] font-semibold text-slate-400">
-                            {board.members} Pemain
-                          </span>
-                        </div>
-                        <div className="font-extrabold text-lg text-white">{board.section}</div>
-                        
-                        <div className="mt-2 flex items-baseline gap-2">
-                          <span className="text-2xl font-black text-amber-300 tabular-nums">
-                            {board.average}%
-                          </span>
-                          <span className="text-[11px] text-slate-400">Rata-rata</span>
-                        </div>
-
-                        <div className="w-full bg-slate-950 h-2 rounded-full mt-3 overflow-hidden border border-slate-800">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              board.average >= 85 ? 'bg-emerald-400' : board.average >= 70 ? 'bg-amber-400' : 'bg-rose-500'
-                            }`}
-                            style={{ width: `${board.average}%` }}
-                          ></div>
-                        </div>
+              {/* SUB-TAB 1: REKAP PER SESI LATIHAN */}
+              {recapSubTab === 'per_session' && (
+                <div className="space-y-4">
+                  {/* Quick Summary Strip */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                      <div className="text-slate-400 text-xs flex items-center gap-1.5">
+                        <CalendarDays size={14} className="text-purple-400" /> Total Sesi Latihan
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      <div className="text-2xl font-black text-white mt-1 tabular-nums">
+                        {trainingSessionsRecap.length}
+                      </div>
+                    </div>
 
-              {/* Individual Student Recap Table */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                  <div>
-                    <h3 className="text-base font-extrabold text-white">Data Rekap Per Pemain</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Pemain dengan kehadiran <strong className="text-rose-400">&lt; 80%</strong> disorot warna merah untuk bahan evaluasi pelatih.
-                    </p>
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                      <div className="text-slate-400 text-xs flex items-center gap-1.5">
+                        <Award size={14} className="text-emerald-400" /> Rata-rata Korps
+                      </div>
+                      <div className="text-2xl font-black text-emerald-300 mt-1 tabular-nums">
+                        {trainingSessionsRecap.length > 0 
+                          ? Math.round(trainingSessionsRecap.reduce((acc, s) => acc + s.rate, 0) / trainingSessionsRecap.length) 
+                          : 0}%
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl">
+                      <div className="text-slate-400 text-xs flex items-center gap-1.5">
+                        <CheckCircle2 size={14} className="text-amber-400" /> Total Record Presensi
+                      </div>
+                      <div className="text-2xl font-black text-amber-300 mt-1 tabular-nums">
+                        {trainingSessionsRecap.reduce((acc, s) => acc + s.totalFilled, 0)}
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex flex-col justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedDate(new Date().toISOString().split('T')[0]);
+                          setAdminTab('admin_dashboard');
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-purple-700 hover:bg-purple-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-95"
+                      >
+                        <ClipboardList size={14} />
+                        <span>Input Sesi Baru</span>
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setRecapFilter('all')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
-                    >
-                      Semua
-                    </button>
-                    <button
-                      onClick={() => setRecapFilter('warning')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'warning' ? 'bg-rose-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
-                    >
-                      Perlu Evaluasi (&lt;80%)
-                    </button>
-                    <button
-                      onClick={() => setRecapFilter('safe')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'safe' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
-                    >
-                      Aman (≥80%)
-                    </button>
+                  {/* If Empty */}
+                  {trainingSessionsRecap.length === 0 ? (
+                    <div className="bg-slate-900 border border-dashed border-slate-800 rounded-3xl p-10 sm:p-12 text-center space-y-4 shadow-xl">
+                      <div className="w-16 h-16 mx-auto rounded-3xl bg-purple-950/60 border border-purple-800/60 flex items-center justify-center text-purple-400 shadow-inner">
+                        <CalendarDays size={30} />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-lg font-bold text-white">Belum Ada Sesi Latihan Tercatat</h4>
+                        <p className="text-xs text-slate-400 max-w-md mx-auto">
+                          Data rekapitulasi presensi saat ini kosong. Anda dapat memulai mencatat sesi latihan baru atau memulihkan data simulasi awal.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => { setAdminTab('admin_dashboard'); }}
+                          className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95"
+                        >
+                          <ClipboardList size={15} />
+                          <span>Mulai Input Presensi Latihan</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRestoreInitialRecap}
+                          className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-2 transition-all active:scale-95"
+                        >
+                          <RefreshCw size={14} />
+                          <span>Pulihkan Data Simulasi Awal</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Training Session Cards */
+                    <div className="space-y-4">
+                      {trainingSessionsRecap.map((session) => {
+                        const isExpanded = expandedSessionDate === session.date;
+                        const isGoodRate = session.rate >= 80;
+
+                        return (
+                          <div 
+                            key={session.date}
+                            className="bg-slate-900 border border-slate-800 hover:border-purple-800/50 rounded-3xl overflow-hidden shadow-xl transition-all"
+                          >
+                            {/* Session Header Card */}
+                            <div className="p-4 sm:p-5 flex flex-col lg:flex-row justify-between lg:items-center gap-4 bg-slate-900/90">
+                              <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-base font-extrabold text-white flex items-center gap-2">
+                                    <CalendarDays size={18} className="text-purple-400" />
+                                    {formatIndonesianDate(session.date)}
+                                  </span>
+                                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-950 text-slate-400 border border-slate-800">
+                                    {session.date}
+                                  </span>
+                                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                                    isGoodRate 
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-800/60' 
+                                      : 'bg-rose-950 text-rose-300 border-rose-800/60'
+                                  }`}>
+                                    {session.rate}% Kehadiran
+                                  </span>
+                                </div>
+
+                                {/* Status Counts Strip */}
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-800/40 text-emerald-300 font-semibold">
+                                    Hadir: <strong className="text-white tabular-nums">{session.hadirCount}</strong>
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-800/40 text-amber-300 font-semibold">
+                                    Sakit: <strong className="text-white tabular-nums">{session.sakitCount}</strong>
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-lg bg-sky-950/60 border border-sky-800/40 text-sky-300 font-semibold">
+                                    Izin: <strong className="text-white tabular-nums">{session.izinCount}</strong>
+                                  </span>
+                                  <span className="px-2.5 py-1 rounded-lg bg-rose-950/60 border border-rose-800/40 text-rose-300 font-semibold">
+                                    Alfa: <strong className="text-white tabular-nums">{session.alfaCount}</strong>
+                                  </span>
+                                  <span className="text-slate-400 text-[11px]">
+                                    · {session.totalFilled} dari {students.length} anggota
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Actions for Coach & Admin */}
+                              <div className="flex flex-wrap items-center gap-2 self-end lg:self-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDate(session.date);
+                                    setAdminTab('admin_dashboard');
+                                    triggerToast(`Beralih ke form presensi sesi latihan tanggal ${session.date}.`);
+                                  }}
+                                  className="px-3.5 py-2 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700/50 text-xs font-bold flex items-center gap-1.5 transition-all"
+                                  title="Buka form presensi lengkap sesi ini"
+                                >
+                                  <FileEdit size={14} className="text-amber-400" />
+                                  <span>Koreksi di Presensi</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedSessionDate(isExpanded ? null : session.date)}
+                                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                                >
+                                  <span>{isExpanded ? 'Tutup Rincian' : 'Lihat & Koreksi Cepat'}</span>
+                                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSession(session.date)}
+                                  className="p-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/80 text-rose-300 hover:text-white border border-rose-800/60 transition-all cursor-pointer active:scale-95 shadow-sm hover:shadow-rose-950/50"
+                                  title="Reset / Hapus Sesi Latihan Ini"
+                                  aria-label={`Hapus sesi latihan tanggal ${session.date}`}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Collapsible Inline Table for Immediate Edit */}
+                            {isExpanded && (
+                              <div className="border-t border-slate-800 bg-slate-950/90 p-4 sm:p-5 space-y-3 animate-in fade-in">
+                                <div className="flex justify-between items-center px-1">
+                                  <div className="text-xs text-slate-400">
+                                    Koreksi langsung status atau catatan pemain untuk sesi <strong className="text-amber-400">{formatIndonesianDate(session.date)}</strong>:
+                                  </div>
+                                  <span className="text-[11px] text-purple-400 font-semibold">
+                                    Perubahan tersimpan otomatis
+                                  </span>
+                                </div>
+
+                                <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="bg-slate-900 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                        <th className="py-2.5 px-4 w-10 text-center">No</th>
+                                        <th className="py-2.5 px-4">Nama Pemain & Section</th>
+                                        <th className="py-2.5 px-4 text-center">Ubah Status Sesi Ini</th>
+                                        <th className="py-2.5 px-4">Keterangan / Alasan</th>
+                                        <th className="py-2.5 px-3 text-center w-16">Aksi</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/60">
+                                      {students
+                                        .filter(st => {
+                                          // show students matching search query
+                                          return st.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                                 st.section.toLowerCase().includes(searchQuery.toLowerCase());
+                                        })
+                                        .map((st, idx) => {
+                                          const rec = getRecordForDate(st.id, session.date);
+                                          return (
+                                            <tr key={st.id} className="hover:bg-slate-900/60 transition-colors">
+                                              <td className="py-2.5 px-4 text-center text-slate-500 tabular-nums">
+                                                {idx + 1}
+                                              </td>
+                                              <td className="py-2.5 px-4">
+                                                <div className="font-bold text-slate-200">{st.name}</div>
+                                                <div className="text-[11px] text-slate-400">
+                                                  <span className="text-amber-400">{st.section}</span> · Kls {st.kelas} · Asrama {st.asrama}
+                                                </div>
+                                              </td>
+                                              <td className="py-2.5 px-4 text-center">
+                                                <div className="inline-flex rounded-xl bg-slate-900 p-1 border border-slate-800 gap-1">
+                                                  {[
+                                                    { key: 'Hadir', label: 'Hadir', activeClass: 'bg-emerald-600 text-white' },
+                                                    { key: 'Sakit', label: 'Sakit', activeClass: 'bg-amber-600 text-white' },
+                                                    { key: 'Izin', label: 'Izin', activeClass: 'bg-sky-600 text-white' },
+                                                    { key: 'Alfa', label: 'Alfa', activeClass: 'bg-rose-600 text-white' }
+                                                  ].map(btn => (
+                                                    <button
+                                                      key={btn.key}
+                                                      type="button"
+                                                      onClick={() => handleSaveAttendanceForDate(session.date, st.id, btn.key, rec.note)}
+                                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
+                                                        rec.status === btn.key
+                                                          ? btn.activeClass
+                                                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                                      }`}
+                                                    >
+                                                      {btn.label}
+                                                    </button>
+                                                  ))}
+                                                </div>
+                                              </td>
+                                              <td className="py-2.5 px-4">
+                                                <input 
+                                                  type="text"
+                                                  placeholder="Catatan halangan..."
+                                                  value={rec.note}
+                                                  onChange={(e) => handleSaveAttendanceForDate(session.date, st.id, rec.status, e.target.value)}
+                                                  className="w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                                                />
+                                              </td>
+                                              <td className="py-2.5 px-3 text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleOpenEditRecord(st, session.date)}
+                                                    className="p-1 text-slate-400 hover:text-amber-300 rounded"
+                                                    title="Edit Rinci Presensi"
+                                                  >
+                                                    <FileEdit size={13} />
+                                                  </button>
+                                                  {rec.status && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleDeleteAttendanceRecord(session.date, st.id, st.name)}
+                                                      className="p-1 text-slate-500 hover:text-rose-400 rounded"
+                                                      title="Hapus Rekor Pemain Ini"
+                                                    >
+                                                      <Trash2 size={13} />
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SUB-TAB 2: LEADERBOARD & REKAP KUMULATIF */}
+              {recapSubTab === 'cumulative' && (
+                <div className="space-y-6">
+                  {/* Podium Section Marching Band */}
+                  <div className="bg-gradient-to-br from-slate-900 via-purple-950/70 to-slate-900 border border-purple-800/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden">
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 relative z-10">
+                      <div>
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-bold mb-2">
+                          <Trophy size={14} className="text-amber-400" />
+                          Leaderboard Disiplin Section PGT
+                        </div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">
+                          Peringkat Section Terdisiplin
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Dihitung berdasarkan rata-rata persentase presensi latihan seluruh anggota di setiap instrumen.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Podium Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 relative z-10">
+                      {sectionLeaderboard.map((board, index) => {
+                        const isFirst = index === 0;
+                        const isSecond = index === 1;
+                        const isThird = index === 2;
+
+                        return (
+                          <div 
+                            key={board.section}
+                            className={`p-4 rounded-2xl border transition-all ${
+                              isFirst 
+                                ? 'bg-gradient-to-b from-amber-500/20 to-slate-900/90 border-amber-400/60 shadow-lg shadow-amber-500/10' 
+                                : isSecond 
+                                ? 'bg-gradient-to-b from-slate-400/15 to-slate-900/90 border-slate-400/40' 
+                                : isThird
+                                ? 'bg-gradient-to-b from-amber-700/15 to-slate-900/90 border-amber-700/40'
+                                : 'bg-slate-900/70 border-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${
+                                isFirst ? 'bg-amber-400 text-slate-950 shadow-md' :
+                                isSecond ? 'bg-slate-300 text-slate-950' :
+                                isThird ? 'bg-amber-700 text-white' :
+                                'bg-slate-800 text-slate-400'
+                              }`}>
+                                #{index + 1}
+                              </span>
+                              <span className="text-[11px] font-semibold text-slate-400">
+                                {board.members} Pemain
+                              </span>
+                            </div>
+                            <div className="font-extrabold text-lg text-white">{board.section}</div>
+                            
+                            <div className="mt-2 flex items-baseline gap-2">
+                              <span className="text-2xl font-black text-amber-300 tabular-nums">
+                                {board.average}%
+                              </span>
+                              <span className="text-[11px] text-slate-400">Rata-rata</span>
+                            </div>
+
+                            <div className="w-full bg-slate-950 h-2 rounded-full mt-3 overflow-hidden border border-slate-800">
+                              <div 
+                                className={`h-full rounded-full transition-all duration-500 ${
+                                  board.average >= 85 ? 'bg-emerald-400' : board.average >= 70 ? 'bg-amber-400' : 'bg-rose-500'
+                                }`}
+                                style={{ width: `${board.average}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Individual Student Recap Table */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                    <div className="p-5 border-b border-slate-800 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-white">Data Rekap Per Pemain</h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Pemain dengan kehadiran <strong className="text-rose-400">&lt; 80%</strong> disorot warna merah untuk bahan evaluasi pelatih.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRecapFilter('all')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'all' ? 'bg-purple-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
+                        >
+                          Semua
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRecapFilter('warning')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'warning' ? 'bg-rose-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
+                        >
+                          Perlu Evaluasi (&lt;80%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRecapFilter('safe')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${recapFilter === 'safe' ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800'}`}
+                        >
+                          Aman (≥80%)
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                            <th className="py-3 px-6">Nama Pemain</th>
+                            <th className="py-3 px-6">Section</th>
+                            <th className="py-3 px-6 text-center">% Kehadiran</th>
+                            <th className="py-3 px-6">Status Kedisiplinan</th>
+                            <th className="py-3 px-6">Catatan Halangan Terkumpul</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-sm">
+                          {recapData
+                            .filter(s => {
+                              const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                                  s.kelas.toLowerCase().includes(searchQuery.toLowerCase());
+                              if (!matchSearch) return false;
+                              if (recapFilter === 'warning') return s.percentage < 80;
+                              if (recapFilter === 'safe') return s.percentage >= 80;
+                              return true;
+                            })
+                            .map(student => {
+                              const isWarning = student.percentage < 80;
+                              return (
+                                <tr key={student.id} className={isWarning ? 'bg-rose-950/20 hover:bg-rose-950/30' : 'hover:bg-slate-800/40'}>
+                                  <td className="py-3.5 px-6">
+                                    <div className={`font-bold ${isWarning ? 'text-rose-300' : 'text-slate-100'}`}>
+                                      {student.name}
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-0.5">
+                                      Kls: {student.kelas} · Asrama: {student.asrama}
+                                    </div>
+                                  </td>
+                                  <td className="py-3.5 px-6">
+                                    <span className="bg-slate-800 text-purple-300 text-xs px-2.5 py-1 rounded-md font-medium border border-slate-700">
+                                      {student.section}
+                                    </span>
+                                  </td>
+                                  <td className="py-3.5 px-6 text-center">
+                                    <span className={`inline-flex px-3 py-1 rounded-xl text-xs font-black tabular-nums ${
+                                      isWarning 
+                                        ? 'bg-rose-950 text-rose-300 border border-rose-800' 
+                                        : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                    }`}>
+                                      {student.percentage}%
+                                    </span>
+                                  </td>
+                                  <td className="py-3.5 px-6">
+                                    {isWarning ? (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                                        <AlertCircle size={14} /> Evaluasi (Sering Absen)
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                                        <Check size={14} /> Disiplin Latihan
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 px-6 text-xs text-slate-400 max-w-xs truncate">
+                                    {student.notes || <span className="text-slate-600">- Tidak ada halangan -</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
+              )}
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <th className="py-3 px-6">Nama Pemain</th>
-                        <th className="py-3 px-6">Section</th>
-                        <th className="py-3 px-6 text-center">% Kehadiran</th>
-                        <th className="py-3 px-6">Status Kedisiplinan</th>
-                        <th className="py-3 px-6">Catatan Halangan Terkumpul</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-sm">
-                      {recapData
-                        .filter(s => {
-                          const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                                              s.kelas.toLowerCase().includes(searchQuery.toLowerCase());
-                          if (!matchSearch) return false;
-                          if (recapFilter === 'warning') return s.percentage < 80;
-                          if (recapFilter === 'safe') return s.percentage >= 80;
-                          return true;
-                        })
-                        .map(student => {
-                          const isWarning = student.percentage < 80;
-                          return (
-                            <tr key={student.id} className={isWarning ? 'bg-rose-950/20 hover:bg-rose-950/30' : 'hover:bg-slate-800/40'}>
-                              <td className="py-3.5 px-6">
-                                <div className={`font-bold ${isWarning ? 'text-rose-300' : 'text-slate-100'}`}>
-                                  {student.name}
-                                </div>
-                                <div className="text-xs text-slate-400 mt-0.5">
-                                  Kls: {student.kelas} · Asrama: {student.asrama}
-                                </div>
-                              </td>
-                              <td className="py-3.5 px-6">
-                                <span className="bg-slate-800 text-purple-300 text-xs px-2.5 py-1 rounded-md font-medium border border-slate-700">
-                                  {student.section}
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-6 text-center">
-                                <span className={`inline-flex px-3 py-1 rounded-xl text-xs font-black tabular-nums ${
-                                  isWarning 
-                                    ? 'bg-rose-950 text-rose-300 border border-rose-800' 
-                                    : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                }`}>
-                                  {student.percentage}%
-                                </span>
-                              </td>
-                              <td className="py-3.5 px-6">
-                                {isWarning ? (
-                                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-400">
-                                    <AlertCircle size={14} /> Evaluasi (Sering Absen)
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                                    <Check size={14} /> Disiplin Latihan
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3.5 px-6 text-xs text-slate-400 max-w-xs truncate">
-                                {student.notes || <span className="text-slate-600">- Tidak ada halangan -</span>}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1756,9 +2505,11 @@ export default function App() {
                               <span className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-bold ${
                                 u.role === 'admin' 
                                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                                  : u.role === 'pelatih'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                   : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                               }`}>
-                                {u.role === 'admin' ? 'Administrator' : 'Petugas Lapangan'}
+                                {u.role === 'admin' ? 'Administrator' : u.role === 'pelatih' ? 'Pelatih (Akses Koreksi Data)' : 'Petugas Lapangan'}
                               </span>
                             </td>
                             <td className="py-3.5 px-6 text-xs text-slate-300 font-semibold">
@@ -1841,14 +2592,24 @@ export default function App() {
                         </div>
                       </div>
 
-                      <button 
-                        type="button"
-                        onClick={() => handleDeleteStudent(s.id, s.name)}
-                        className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-950/40 rounded-xl transition-colors"
-                        title="Hapus Pemain"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          type="button"
+                          onClick={() => handleOpenEditStudent(s)}
+                          className="p-2 text-slate-400 hover:text-amber-300 hover:bg-slate-800 rounded-xl transition-colors"
+                          title="Edit Data Pemain"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => handleDeleteStudent(s.id, s.name)}
+                          className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors"
+                          title="Hapus Pemain"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
                   ))}
               </div>
@@ -1932,10 +2693,11 @@ export default function App() {
                 </label>
                 <select 
                   value={userFormRole}
-                  onChange={(e) => setUserFormRole(e.target.value as 'admin' | 'petugas')}
+                  onChange={(e) => setUserFormRole(e.target.value as 'admin' | 'petugas' | 'pelatih')}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="petugas">Petugas Lapangan (Hanya Buka Presensi)</option>
+                  <option value="petugas">Petugas Lapangan (Input Presensi Saja)</option>
+                  <option value="pelatih">Pelatih / Coach (Akses Edit & Koreksi Data Input)</option>
                   <option value="admin">Administrator (Akses Penuh Master)</option>
                 </select>
               </div>
@@ -2139,6 +2901,364 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT STUDENT MEMBER (ADMIN) */}
+      {isEditStudentModalOpen && editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Edit2 size={18} className="text-amber-400" />
+                Edit Data Pemain Marching Band
+              </h3>
+              <button onClick={() => setIsEditStudentModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditStudent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                  Nama Lengkap Pemain
+                </label>
+                <input 
+                  type="text" 
+                  required 
+                  value={editStudentName}
+                  onChange={(e) => setEditStudentName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                    Kelas
+                  </label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={editStudentKelas}
+                    onChange={(e) => setEditStudentKelas(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                    Asrama
+                  </label>
+                  <select 
+                    value={editStudentAsrama}
+                    onChange={(e) => setEditStudentAsrama(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="A">Asrama A</option>
+                    <option value="B">Asrama B</option>
+                    <option value="C">Asrama C</option>
+                    <option value="D">Asrama D</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                  Section Instrumen
+                </label>
+                <select 
+                  value={editStudentSection}
+                  onChange={(e) => setEditStudentSection(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="Brass">Brass (Terompet/Mellophone/Baritone/Tuba)</option>
+                  <option value="Cologuard">Cologuard / CG (Bendera & Rifle)</option>
+                  <option value="Battery">Battery (Snare/Tenor/Bass Drum)</option>
+                  <option value="Pit">Pit Instrument (Marimba/Xylophone/Glock)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsEditStudentModalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold transition-all shadow-md"
+                >
+                  Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT ATTENDANCE RECORD (ADMIN) */}
+      {isEditRecordModalOpen && editingRecordTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <FileEdit size={20} className="text-amber-400" />
+                Koreksi Presensi Sesi Latihan
+              </h3>
+              <button onClick={() => setIsEditRecordModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 mb-4 space-y-1">
+              <div className="font-bold text-white text-base">{editingRecordTarget.studentName}</div>
+              <div className="text-xs text-slate-400 flex items-center gap-2">
+                <span className="text-amber-400 font-semibold">{editingRecordTarget.section}</span>
+                <span>•</span>
+                <span>Kelas {editingRecordTarget.kelas}</span>
+                <span>•</span>
+                <span className="font-mono text-purple-400">Tanggal: {editingRecordTarget.date}</span>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveEditRecordModal(editingRecordTarget.status || 'Hadir', editingRecordTarget.note);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2 uppercase tracking-wider">
+                  Status Kehadiran
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {(['Hadir', 'Sakit', 'Izin', 'Alfa'] as const).map((st) => (
+                    <button
+                      type="button"
+                      key={st}
+                      onClick={() => setEditingRecordTarget(prev => prev ? { ...prev, status: st } : null)}
+                      className={`py-2.5 rounded-xl text-xs font-bold transition-all ${
+                        editingRecordTarget.status === st
+                          ? st === 'Hadir' ? 'bg-emerald-600 text-white ring-2 ring-emerald-400' :
+                            st === 'Sakit' ? 'bg-amber-600 text-white ring-2 ring-amber-400' :
+                            st === 'Izin' ? 'bg-sky-600 text-white ring-2 ring-sky-400' :
+                            'bg-rose-600 text-white ring-2 ring-rose-400'
+                          : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Catatan / Alasan Halangan
+                </label>
+                <textarea
+                  rows={3}
+                  value={editingRecordTarget.note}
+                  onChange={(e) => setEditingRecordTarget(prev => prev ? { ...prev, note: e.target.value } : null)}
+                  placeholder="Contoh: Bimbingan tahfidz asrama, demam, tugas madrasah..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsEditRecordModalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold transition-all shadow-md"
+                >
+                  Simpan Koreksi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: RESET REKAPITULASI DATA PRESENSI */}
+      {isResetConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <RotateCcw size={20} className="text-rose-400" />
+                Reset Data Rekapitulasi
+              </h3>
+              <button 
+                onClick={() => setIsResetConfirmModalOpen(false)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-rose-950/30 border border-rose-900/40 rounded-2xl mb-5 space-y-2">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                <AlertCircle size={16} /> Perhatian Penting
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Fitur ini memungkinkan Anda mereset rekap presensi secara mandiri ketika terjadi kekeliruan atau ingin memulai periode baru:
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleResetAllRecap}
+                className="w-full text-left p-4 rounded-2xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 transition-all group"
+              >
+                <div className="font-bold text-xs text-rose-300 group-hover:text-white flex items-center justify-between">
+                  <span>1. Kosongkan Seluruh Rekap (Mulai dari Nol)</span>
+                  <Trash2 size={15} />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Menghapus semua riwayat presensi ({trainingSessionsRecap.length} sesi) untuk memulai periode baru.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRestoreInitialRecap}
+                className="w-full text-left p-4 rounded-2xl bg-slate-950 hover:bg-slate-800/70 border border-slate-800 transition-all group"
+              >
+                <div className="font-bold text-xs text-purple-300 group-hover:text-white flex items-center justify-between">
+                  <span>2. Pulihkan Data Simulasi Semula</span>
+                  <RefreshCw size={15} />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Mengembalikan data demo awal (2 sesi latihan presensi bawaan sistem).
+                </p>
+              </button>
+            </div>
+
+            <div className="pt-5 mt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsResetConfirmModalOpen(false)}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: KONFIRMASI HAPUS SESI LATIHAN */}
+      {sessionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Trash2 size={20} className="text-rose-400" />
+                Hapus Sesi Latihan
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setSessionToDelete(null)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-rose-950/30 border border-rose-900/40 rounded-2xl mb-5 space-y-2">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                <AlertCircle size={16} /> Konfirmasi Hapus Sesi
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Apakah Anda yakin ingin menghapus seluruh data presensi sesi latihan tanggal:
+              </p>
+              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center font-bold text-amber-400 text-sm">
+                {formatIndonesianDate(sessionToDelete)}
+                <span className="block text-xs font-mono text-slate-400 font-normal mt-0.5">
+                  ({sessionToDelete})
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-normal pt-1">
+                Data presensi seluruh pemain pada tanggal ini akan dihapus dari rekapitulasi.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSessionToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDeleteSession(sessionToDelete)}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-950 transition-all active:scale-95 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                <span>Ya, Hapus Sesi</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: KONFIRMASI HAPUS USER */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Trash2 size={20} className="text-rose-400" />
+                Hapus Akun Pengguna
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setUserToDelete(null)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4 bg-rose-950/30 border border-rose-900/40 rounded-2xl mb-5 space-y-2">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                <AlertCircle size={16} /> Konfirmasi Hapus Akun
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Apakah Anda yakin ingin menghapus akun <strong className="text-white">"{userToDelete.name}"</strong>? Pengguna ini tidak akan bisa login lagi ke sistem.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmDeleteUser(userToDelete.id, userToDelete.name)}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-950 transition-all active:scale-95 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                <span>Hapus Akun</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
