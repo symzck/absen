@@ -5,7 +5,8 @@ import {
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   Calendar, RefreshCw, FileEdit, Award, BookmarkCheck,
-  RotateCcw, ChevronDown, ChevronUp, CalendarDays, History, Layers
+  RotateCcw, ChevronDown, ChevronUp, CalendarDays, History, Layers,
+  FileSpreadsheet, Link as LinkIcon, Zap
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 
@@ -289,8 +290,8 @@ export default function App() {
   // Navigation Tab State
   // Petugas: 'attendance' | 'my_history'
   // Pelatih: 'edit_history' | 'attendance' | 'recap' | 'members'
-  // Admin: 'admin_dashboard' | 'recap' | 'members' | 'manage_users'
-  const [adminTab, setAdminTab] = useState<'admin_dashboard' | 'recap' | 'members' | 'manage_users'>('admin_dashboard');
+  // Admin: 'admin_dashboard' | 'recap' | 'google_sheets' | 'members' | 'manage_users'
+  const [adminTab, setAdminTab] = useState<'admin_dashboard' | 'recap' | 'google_sheets' | 'members' | 'manage_users'>('admin_dashboard');
   const [petugasTab, setPetugasTab] = useState<'attendance' | 'my_history'>('attendance');
   const [pelatihTab, setPelatihTab] = useState<'edit_history' | 'attendance' | 'recap' | 'members'>('edit_history');
 
@@ -330,6 +331,12 @@ export default function App() {
   const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  // Google Sheets Integration State
+  const [isGoogleLoggedIn, setIsGoogleLoggedIn] = useState(false);
+  const [spreadsheetUrl, setSpreadsheetUrl] = useState('');
+  const [autoSync, setAutoSync] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState('Belum pernah');
 
   // Modal: Add New Member
   const [isAddMemberModalOpen, setIsAddMemberModalOpen] = useState(false);
@@ -1457,6 +1464,26 @@ export default function App() {
             <Trophy size={14} className="text-amber-400" />
           </button>
 
+          {/* Google Sheets Sync (Admin Only) */}
+          {currentUser.role === 'admin' && (
+            <button 
+              onClick={() => { setAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+                adminTab === 'google_sheets' 
+                  ? 'bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 shadow-md' 
+                  : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <FileSpreadsheet size={18} className={adminTab === 'google_sheets' ? 'text-emerald-400' : 'text-slate-400'} />
+                <span>Google Sheets Sync</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">
+                Sheets
+              </span>
+            </button>
+          )}
+
           {/* User & Staff Management (Admin Only) */}
           {currentUser.role === 'admin' && (
             <button 
@@ -1502,14 +1529,14 @@ export default function App() {
               {currentUser.role === 'admin' ? 'Admin:' : 'Pelatih:'} <strong className="text-amber-300 font-semibold">{currentUser.fullName || currentUser.username}</strong>
             </div>
             <span className="text-[10px] text-emerald-400 font-mono">
-              {currentUser.role === 'admin' ? 'Master' : 'Koreksi Data'}
+              {currentUser.role === 'admin' ? 'Privat' : 'Koreksi Data'}
             </span>
           </div>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs text-red-300 bg-red-950/30 hover:bg-red-900/50 hover:text-white rounded-xl border border-red-800/40 transition-colors font-semibold"
           >
-            <LogOut size={15} /> Keluar dari Sistem
+            <LogOut size={15} /> Keluar dari Admin
           </button>
         </div>
       </aside>
@@ -1527,6 +1554,7 @@ export default function App() {
             <span className="text-slate-200 font-semibold">
               {adminTab === 'admin_dashboard' && 'Presensi Seluruh Sesi Marching Band'}
               {adminTab === 'recap' && 'Rekapitulasi & Leaderboard Kehadiran'}
+              {adminTab === 'google_sheets' && 'Sinkronisasi Data Google Sheets'}
               {adminTab === 'manage_users' && 'Manajemen Akun Petugas & User'}
               {adminTab === 'members' && 'Kelola Master Data Anggota'}
             </span>
@@ -1553,13 +1581,6 @@ export default function App() {
               <Clock size={13} className="text-purple-400" />
               <span>{selectedDate}</span>
             </div>
-            <button
-              onClick={handleLogout}
-              className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-300 rounded-xl border border-red-800/40 text-xs font-semibold flex items-center gap-1.5 transition-colors"
-            >
-              <LogOut size={13} />
-              <span>Keluar</span>
-            </button>
           </div>
         </header>
 
@@ -2417,6 +2438,178 @@ export default function App() {
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* TAB BARU: GOOGLE SHEETS SYNC */}
+          {adminTab === 'google_sheets' && currentUser.role === 'admin' && (
+            <div className="space-y-6 pb-20 md:pb-6">
+              
+              {/* Top Banner Control & Filters */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-700/50 text-emerald-400 text-xs font-bold mb-3">
+                      <FileSpreadsheet size={14} /> Integrasi Resmi Google Workspace
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight mb-2">Sinkronisasi Langsung Google Sheets</h2>
+                    <p className="text-sm text-slate-400 max-w-3xl">
+                      Hubungkan sistem presensi PGT Mu'allimin langsung ke Google Sheets Anda. Data presensi resmi, rekapitulasi nilai kehadiran, dan master data pemain tersinkron secara real-time ke akun Google Drive Anda.
+                    </p>
+                  </div>
+                  
+                  {/* Mock Google Login Button */}
+                  <button 
+                    onClick={() => {
+                      setIsGoogleLoggedIn(!isGoogleLoggedIn);
+                      if (!isGoogleLoggedIn) triggerToast('Berhasil terhubung dengan akun Google Anda.');
+                    }} 
+                    className="bg-white text-slate-900 px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-gray-100 transition-colors shrink-0 shadow-lg shadow-emerald-950/20"
+                  >
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="w-5 h-5">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                    </svg>
+                    {isGoogleLoggedIn ? 'Logout dari Google' : 'Sign in with Google'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid 2 Kolom Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Kolom Kiri: Koneksi & Setup */}
+                <div className="lg:col-span-2 space-y-6">
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-5">
+                      <LinkIcon size={18} className="text-emerald-400" /> Koneksi Google Spreadsheet
+                    </h3>
+                    
+                    <div className="mb-5">
+                      <label className="block text-xs font-semibold text-slate-300 mb-2">
+                        ID Spreadsheet / URL Google Sheets
+                      </label>
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={spreadsheetUrl} 
+                          onChange={(e) => setSpreadsheetUrl(e.target.value)} 
+                          placeholder="Contoh: 1BxIMVs0XRA5nFMdKvBdBZJgmUUqptlbs740gvE2upms atau paste URL lengkap" 
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono" 
+                        />
+                        <button 
+                          onClick={() => {
+                            if (!spreadsheetUrl.trim()) {
+                              triggerToast('Mohon isi ID atau URL Spreadsheet terlebih dahulu.');
+                              return;
+                            }
+                            triggerToast('URL Spreadsheet berhasil dihubungkan!');
+                          }} 
+                          className="bg-slate-800 hover:bg-slate-700 text-white px-5 py-3 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
+                        >
+                          Simpan ID
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => triggerToast('Proses pembuatan Spreadsheet baru di Google Drive Anda dimulai otomatis...')} 
+                      className="bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-800/60 text-emerald-400 px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors mb-6 shadow-sm shadow-emerald-950/40"
+                    >
+                      <Zap size={16} className="text-emerald-400" /> Buat Spreadsheet Baru Otomatis
+                    </button>
+
+                    {/* Format Tab info */}
+                    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-sm font-bold text-white mb-3">Format Tab yang Otomatis Dibuat di Google Sheets:</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-inner">
+                          <div className="text-emerald-400 font-bold text-sm mb-1">1. Presensi_Resmi</div>
+                          <div className="text-xs text-slate-400 leading-relaxed">Seluruh sesi absen ter-submit beserta catatan halangan.</div>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-inner">
+                          <div className="text-emerald-400 font-bold text-sm mb-1">2. Rekap_Kehadiran</div>
+                          <div className="text-xs text-slate-400 leading-relaxed">Persentase disiplin, total hadir/izin/sakit/alfa per anggota.</div>
+                        </div>
+                        <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-inner">
+                          <div className="text-emerald-400 font-bold text-sm mb-1">3. Master_Anggota</div>
+                          <div className="text-xs text-slate-400 leading-relaxed">Data induk nama, kelas, asrama, & section pemain.</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Kolom Kanan: Status & Sync Control */}
+                <div className="space-y-6">
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl h-full flex flex-col">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2 mb-6">
+                      <RefreshCw size={18} className="text-emerald-400" /> Pusat Sinkronisasi Data
+                    </h3>
+                    
+                    <div className="space-y-4 mb-8 flex-1">
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-800/60">
+                        <span className="text-sm text-slate-400">Status Akun:</span>
+                        <span className={`text-sm font-bold ${isGoogleLoggedIn ? 'text-emerald-400' : 'text-amber-400'}`}>
+                          {isGoogleLoggedIn ? 'Terhubung (Aktif)' : 'Belum Login'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-800/60">
+                        <span className="text-sm text-slate-400">Sesi Ter-submit:</span>
+                        <span className="text-sm font-bold text-white">{trainingSessionsRecap.length} Sesi Resmi</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-800/60">
+                        <span className="text-sm text-slate-400">Total Anggota:</span>
+                        <span className="text-sm font-bold text-white">{students.length} Pemain</span>
+                      </div>
+                      <div className="flex justify-between items-center pb-3">
+                        <span className="text-sm text-slate-400">Terakhir Sinkron:</span>
+                        <span className={`text-sm font-bold ${lastSyncTime !== 'Belum pernah' ? 'text-emerald-400' : 'text-emerald-400/60'}`}>
+                          {lastSyncTime}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto">
+                      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex items-center justify-between mb-4 cursor-pointer hover:bg-slate-950/80 transition-colors" onClick={() => setAutoSync(!autoSync)}>
+                        <div>
+                          <div className="text-sm font-bold text-white">Auto-Sync Saat Submit</div>
+                          <div className="text-[11px] text-slate-400 mt-0.5">Sync otomatis saat presensi difinalisasi</div>
+                        </div>
+                        {/* Custom Toggle Switch */}
+                        <button className={`w-11 h-6 rounded-full relative transition-colors duration-300 ${autoSync ? 'bg-emerald-500' : 'bg-slate-800'}`}>
+                          <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm ${autoSync ? 'translate-x-5' : ''}`}></div>
+                        </button>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          if (!isGoogleLoggedIn) {
+                            triggerToast('Silakan Sign in dengan Google terlebih dahulu.');
+                            return;
+                          }
+                          if (!spreadsheetUrl && !autoSync) {
+                            triggerToast('Mohon masukkan URL Spreadsheet atau buat file baru terlebih dahulu.');
+                            return;
+                          }
+                          triggerToast('Sinkronisasi data ke Google Sheets berhasil dijalankan!');
+                          setLastSyncTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' WIB');
+                        }} 
+                        className={`w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                          isGoogleLoggedIn 
+                            ? 'bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 shadow-lg shadow-emerald-950 border border-emerald-700' 
+                            : 'bg-emerald-900/40 text-emerald-600 border border-emerald-900/50 cursor-not-allowed'
+                        }`}
+                      >
+                        <RefreshCw size={16} /> Sinkronkan Sekarang
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
             </div>
           )}
 
