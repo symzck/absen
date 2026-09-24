@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   FileSpreadsheet, ExternalLink, RefreshCw, CheckCircle2, 
-  AlertCircle, ShieldCheck, Link2, Sparkles, LogOut, Check
+  AlertCircle, ShieldCheck, Link2, Sparkles, LogOut, Check,
+  Globe, Copy
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { 
@@ -71,6 +72,14 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
   });
 
   const [inputSheetId, setInputSheetId] = useState(sheetConfig.spreadsheetId);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const handleCopyGithubDomain = () => {
+    navigator.clipboard.writeText('symzck.github.io');
+    setCopiedDomain(true);
+    triggerToast('Domain GitHub "symzck.github.io" berhasil disalin ke clipboard!');
+    setTimeout(() => setCopiedDomain(false), 3000);
+  };
 
   useEffect(() => {
     localStorage.setItem('pgt_sheet_config', JSON.stringify(sheetConfig));
@@ -349,6 +358,55 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
                 <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800">
                   <div className="font-bold text-emerald-400">3. Master_Anggota</div>
                   <div className="text-slate-400 mt-0.5">Data induk nama, kelas, asrama, & section pemain.</div>
+                </div>
+              </div>
+            </div>
+
+            {/* GitHub Domain & OAuth Settings Card */}
+            <div className="bg-slate-950/80 border border-purple-500/30 rounded-2xl p-4 text-xs space-y-3 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-white">
+                  <Globe size={15} className="text-purple-400" />
+                  <span>Domain GitHub Pages & Authorized Domains</span>
+                </div>
+                <span className="text-[10px] font-mono bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800/40">
+                  GitHub Pages
+                </span>
+              </div>
+
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Jika aplikasi dijalankan melalui domain GitHub Pages, pastikan domain berikut telah didaftarkan pada 
+                <strong className="text-purple-300"> Firebase Console &gt; Authentication &gt; Settings &gt; Authorized Domains </strong>
+                agar fitur Google Sign-in dan Google Sheets berjalan mulus:
+              </p>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900 border border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 font-mono text-[11px]">Domain:</span>
+                  <code className="text-emerald-400 font-bold font-mono text-xs select-all">
+                    symzck.github.io
+                  </code>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyGithubDomain}
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition-colors border border-slate-700 cursor-pointer"
+                  >
+                    {copiedDomain ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    <span>{copiedDomain ? 'Tersalin!' : 'Salin Domain'}</span>
+                  </button>
+
+                  <a
+                    href="https://symzck.github.io/absen/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-purple-900/40 hover:bg-purple-900/70 text-purple-300 text-[11px] font-semibold flex items-center gap-1 transition-colors border border-purple-700/40"
+                  >
+                    <ExternalLink size={12} />
+                    <span>Buka URL</span>
+                  </a>
                 </div>
               </div>
             </div>

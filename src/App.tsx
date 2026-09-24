@@ -4,7 +4,8 @@ import {
   UserPlus, Trash2, CheckCircle2, AlertCircle, Menu, X, Save,
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
-  FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle
+  FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
+  Globe, ExternalLink
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -13,6 +14,14 @@ import { AttendanceSessionsTab } from './components/AttendanceSessionsTab';
 import { ConfirmModal } from './components/ConfirmModal';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
+
+// GitHub Icon Component
+const GithubIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4" />
+    <path d="M9 18c-4.51 2-5-2-7-2" />
+  </svg>
+);
 
 // ==========================================
 // LOGO RESMI PGT MU'ALLIMIN (DITETAPKAN SECARA PERMANEN)
@@ -851,6 +860,35 @@ export default function App() {
               Sistem mengenali hak akses Anda secara otomatis (Petugas atau Administrator) berdasarkan akun yang Anda masukkan.
             </div>
           </div>
+
+          {/* GitHub Domain & Repository Footer */}
+          <div className="mt-6 flex flex-col items-center gap-2.5 text-center text-xs text-slate-400">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 shadow-lg text-[11px]">
+              <Globe size={13} className="text-purple-400" />
+              <span className="text-slate-400">Domain GitHub:</span>
+              <a 
+                href="https://symzck.github.io/absen/" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-purple-300 hover:text-white font-mono font-semibold underline underline-offset-2 flex items-center gap-1"
+                title="Buka Website di Domain GitHub Pages"
+              >
+                symzck.github.io/absen
+                <ExternalLink size={10} />
+              </a>
+            </div>
+
+            <a 
+              href="https://github.com/symzck/absen" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-slate-500 hover:text-slate-300 text-[11px] flex items-center gap-1.5 transition-colors"
+              title="Buka Repository di GitHub"
+            >
+              <GithubIcon size={13} />
+              <span>Repository GitHub: <strong className="text-slate-400 font-mono">symzck/absen</strong></span>
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -1249,6 +1287,37 @@ export default function App() {
             </div>
           )}
 
+          {/* Petugas Portal Footer with GitHub Domain */}
+          <footer className="pt-8 pb-4 text-center text-xs text-slate-500 border-t border-slate-900 mt-8">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 max-w-4xl mx-auto">
+              <span className="text-[11px] text-slate-400">
+                PGT Mu'allimin Presensi Terpadu · Jalur Petugas Lapangan
+              </span>
+              <div className="flex items-center gap-3">
+                <a 
+                  href="https://symzck.github.io/absen/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-mono text-purple-300 hover:text-white transition-colors"
+                >
+                  <Globe size={12} className="text-purple-400" />
+                  <span>symzck.github.io/absen</span>
+                  <ExternalLink size={10} />
+                </a>
+                <span className="text-slate-700">·</span>
+                <a 
+                  href="https://github.com/symzck/absen"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors"
+                >
+                  <GithubIcon size={12} />
+                  <span>GitHub</span>
+                </a>
+              </div>
+            </div>
+          </footer>
+
         </main>
       </div>
     );
@@ -1462,6 +1531,31 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* GitHub Domain & Repo Quick Access */}
+            <a
+              href="https://symzck.github.io/absen/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/70 border border-purple-800/50 text-purple-300 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-colors"
+              title="Buka Website di GitHub Pages (symzck.github.io/absen)"
+            >
+              <Globe size={13} className="text-purple-400" />
+              <span>Domain GitHub</span>
+              <ExternalLink size={10} />
+            </a>
+
+            <a
+              href="https://github.com/symzck/absen"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
+              title="Repository GitHub: symzck/absen"
+            >
+              <GithubIcon size={14} />
+            </a>
+
+            <div className="h-4 w-[1px] bg-slate-800"></div>
+
             <button
               onClick={() => setIsAdminPassModalOpen(true)}
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors"
@@ -2288,6 +2382,44 @@ export default function App() {
               triggerToast={triggerToast}
             />
           )}
+
+          {/* Admin View Footer with GitHub Domain */}
+          <footer className="mt-14 pt-8 pb-10 border-t border-slate-800 text-center text-xs text-slate-400">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 max-w-5xl mx-auto px-4">
+              <div className="flex items-center gap-2.5 text-slate-300">
+                <Shield size={16} className="text-amber-400" />
+                <span className="font-bold text-white tracking-wide">PGT MU'ALLIMIN YOGYAKARTA</span>
+                <span className="text-slate-600">·</span>
+                <span className="text-slate-400">Sistem Absensi Terpadu</span>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <a 
+                  href="https://symzck.github.io/absen/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-950/50 hover:bg-purple-900/70 border border-purple-800/50 text-purple-300 hover:text-white transition-all text-xs font-mono shadow-sm"
+                  title="Buka Website di GitHub Pages"
+                >
+                  <Globe size={13} className="text-purple-400" />
+                  <span>symzck.github.io/absen</span>
+                  <ExternalLink size={10} />
+                </a>
+
+                <a 
+                  href="https://github.com/symzck/absen"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white transition-all text-xs shadow-sm"
+                  title="Buka Source Code di GitHub"
+                >
+                  <GithubIcon size={14} />
+                  <span>Repository GitHub</span>
+                  <ExternalLink size={10} />
+                </a>
+              </div>
+            </div>
+          </footer>
 
         </div>
       </main>
