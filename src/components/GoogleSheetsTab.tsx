@@ -17,6 +17,7 @@ import {
   SheetConfig 
 } from '../services/googleSheets';
 import { ConfirmModal } from './ConfirmModal';
+import firebaseConfig from '../../firebase-applet-config.json';
 
 interface GoogleSheetsTabProps {
   students: Array<{ id: number; name: string; kelas: string; asrama: string; section: string }>;
@@ -369,14 +370,27 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
                   <Globe size={15} className="text-purple-400" />
                   <span>Domain GitHub Pages & Authorized Domains</span>
                 </div>
-                <span className="text-[10px] font-mono bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800/40">
-                  GitHub Pages
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800/40">
+                    Project: {firebaseConfig.projectId}
+                  </span>
+                  <span className="text-[10px] font-mono bg-purple-950 text-purple-300 px-2 py-0.5 rounded border border-purple-800/40">
+                    GitHub Pages
+                  </span>
+                </div>
               </div>
 
               <p className="text-slate-400 text-[11px] leading-relaxed">
                 Jika aplikasi dijalankan melalui domain GitHub Pages, pastikan domain berikut telah didaftarkan pada 
-                <strong className="text-purple-300"> Firebase Console &gt; Authentication &gt; Settings &gt; Authorized Domains </strong>
+                <a
+                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-purple-300 hover:text-purple-200 underline font-semibold ml-1 inline-flex items-center gap-0.5"
+                >
+                  Firebase Console &gt; Authentication &gt; Settings &gt; Authorized Domains
+                  <ExternalLink size={10} />
+                </a>
                 agar fitur Google Sign-in dan Google Sheets berjalan mulus:
               </p>
 

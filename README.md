@@ -20,7 +20,7 @@ Aplikasi Sistem Absensi Terpadu Marching Band PGT (*Pradana Gita Taruna*) Madras
 ## ⚙️ Konfigurasi Authorized Domain (Firebase & Google OAuth)
 Bagi pengguna fitur Google Sheets Sync saat berjalan di domain GitHub Pages:
 1. Buka [Firebase Console](https://console.firebase.google.com/)
-2. Masuk ke project `crypto-banner-tthv3`
+2. Masuk ke project `absen-7862e`
 3. Pilih **Authentication** > Tab **Settings** > **Authorized domains**
 4. Tambahkan domain:
    - `symzck.github.io`

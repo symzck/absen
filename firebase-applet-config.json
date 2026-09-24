@@ -1,11 +1,9 @@
 {
-  "projectId": "crypto-banner-tthv3",
-  "appId": "1:1015315511773:web:d08fcfc89d4f6f1e5b9e34",
-  "apiKey": "AIzaSyCxeoBZfZigelfMbgAZBdh8eUFuZYngYMw",
-  "authDomain": "crypto-banner-tthv3.firebaseapp.com",
-  "storageBucket": "crypto-banner-tthv3.firebasestorage.app",
-  "messagingSenderId": "1015315511773",
-  "measurementId": "",
-  "oAuthClientId": "1015315511773-5b6g4b8lu3s4940koviqjld1s16qk31t.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "absen-7862e",
+  "appId": "1:1001342587333:web:d0043873e27aeeb5587bac",
+  "apiKey": "AIzaSyAEqifM2SOMkpOoaLF1q4gohtB00pVSdMc",
+  "authDomain": "absen-7862e.firebaseapp.com",
+  "storageBucket": "absen-7862e.firebasestorage.app",
+  "messagingSenderId": "1001342587333",
+  "measurementId": "G-FF5B9S5SR1"
 }
