@@ -28,6 +28,26 @@ Bagi pengguna fitur Google Sheets Sync saat berjalan di domain GitHub Pages:
 
 ---
 
+## 🗄️ Konfigurasi Database Cloud (Cloud Firestore)
+Aplikasi ini kini menyimpan seluruh data secara permanen dan real-time di Cloud Firestore:
+1. Buka [Firebase Console - Firestore Database](https://console.firebase.google.com/project/absen-7862e/firestore)
+2. Pastikan database Firestore telah dibuat (klik **Create database** jika belum)
+3. Masuk ke tab **Rules** dan pastikan rules mengizinkan akses baca dan tulis:
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+4. Klik **Publish** untuk mengaktifkan aturan.
+Setiap perubahan data yang dilakukan Admin (pemain, absensi, koreksi, akun, dan password) akan langsung tersimpan secara permanen dan tersinkronisasi di semua perangkat!
+
+---
+
 ## 🛠️ Deploy ke GitHub Pages
 Repository ini telah dilengkapi dengan GitHub Actions Workflow (`.github/workflows/deploy.yml`).
 Setiap push ke branch `main` atau `master` akan otomatis membuat build dan mendistribusikannya ke domain GitHub Pages `https://symzck.github.io/absen/`.

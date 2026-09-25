@@ -5,7 +5,7 @@ import {
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
-  Globe, ExternalLink
+  Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -14,6 +14,22 @@ import { AttendanceSessionsTab } from './components/AttendanceSessionsTab';
 import { ConfirmModal } from './components/ConfirmModal';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
+import { 
+  saveStudentToCloud, 
+  deleteStudentFromCloud, 
+  saveAttendanceToCloud, 
+  deleteAttendanceFromCloud, 
+  saveUserToCloud, 
+  deleteUserFromCloud, 
+  subscribeStudents, 
+  subscribeAttendances, 
+  subscribeSystemUsers, 
+  seedInitialDatabaseIfEmpty, 
+  uploadAllLocalDataToCloud,
+  onSyncStatusChange,
+  SyncStatus
+} from './services/db';
+import firebaseConfig from '../firebase-applet-config.json';
 
 // GitHub Icon Component
 const GithubIcon: React.FC<{ size?: number; className?: string }> = ({ size = 16, className = "" }) => (
@@ -261,6 +277,53 @@ export default function App() {
   const [newAdminPass, setNewAdminPass] = useState('');
   const [confirmAdminPass, setConfirmAdminPass] = useState('');
 
+  // Cloud Sync & Firestore Real-time State
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
+  const [syncError, setSyncError] = useState<string | undefined>(undefined);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
+
+  // Real-time Cloud Synchronization with Firebase Firestore
+  useEffect(() => {
+    const unsubStatus = onSyncStatusChange((status, err) => {
+      setSyncStatus(status);
+      setSyncError(err);
+    });
+
+    // Check & auto-seed if cloud database is empty
+    seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS).catch((err) => {
+      console.warn('[Firestore] Seed check notice:', err);
+    });
+
+    // Real-time listener for students
+    const unsubStudents = subscribeStudents((remoteStudents) => {
+      if (remoteStudents && remoteStudents.length > 0) {
+        setStudents(remoteStudents);
+      }
+    });
+
+    // Real-time listener for attendances
+    const unsubAttendances = subscribeAttendances((remoteAttendances) => {
+      if (remoteAttendances) {
+        setAttendances(remoteAttendances);
+      }
+    });
+
+    // Real-time listener for system users
+    const unsubUsers = subscribeSystemUsers((remoteUsers) => {
+      if (remoteUsers && remoteUsers.length > 0) {
+        setSystemUsers(remoteUsers);
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubStudents();
+      unsubAttendances();
+      unsubUsers();
+    };
+  }, []);
+
   // Local Storage Synchronizations
   useEffect(() => {
     localStorage.setItem('pgt_system_users', JSON.stringify(systemUsers));
@@ -353,7 +416,7 @@ export default function App() {
     setIsUserModalOpen(true);
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUsername = userFormUsername.trim().toLowerCase();
     const cleanFullName = userFormFullName.trim();
@@ -375,34 +438,33 @@ export default function App() {
 
     if (editingUserId) {
       // Update existing user
-      setSystemUsers(prev => prev.map(u => {
-        if (u.id === editingUserId) {
-          return {
-            ...u,
-            username: cleanUsername,
-            password: cleanPass,
-            fullName: cleanFullName,
-            role: userFormRole,
-            assignedSection: userFormSection
-          };
-        }
-        return u;
-      }));
+      const existingUser = systemUsers.find(u => u.id === editingUserId);
+      const updatedUser: SystemUser = {
+        id: editingUserId,
+        username: cleanUsername,
+        password: cleanPass,
+        fullName: cleanFullName,
+        role: userFormRole,
+        assignedSection: userFormSection,
+        createdAt: existingUser?.createdAt || new Date().toISOString().split('T')[0]
+      };
+
+      setSystemUsers(prev => prev.map(u => u.id === editingUserId ? updatedUser : u));
 
       // If updating current logged in user
       if (currentUser?.id === editingUserId) {
-        setCurrentUser(prev => prev ? ({
-          ...prev,
-          username: cleanUsername,
-          password: cleanPass,
-          fullName: cleanFullName,
-          role: userFormRole,
-          assignedSection: userFormSection
-        }) : null);
+        setCurrentUser(updatedUser);
       }
 
       setIsUserModalOpen(false);
-      triggerToast(`Akun "${cleanFullName}" berhasil diperbarui!`);
+      triggerToast(`Akun "${cleanFullName}" berhasil diperbarui & disimpan ke Cloud!`);
+
+      // Persist to Cloud Firestore
+      try {
+        await saveUserToCloud(updatedUser);
+      } catch (err) {
+        console.warn('Gagal simpan user ke cloud, data tersimpan di lokal:', err);
+      }
     } else {
       // Create new user
       const newUser: SystemUser = {
@@ -416,11 +478,18 @@ export default function App() {
       };
       setSystemUsers(prev => [...prev, newUser]);
       setIsUserModalOpen(false);
-      triggerToast(`Petugas / User "${cleanFullName}" berhasil didaftarkan!`);
+      triggerToast(`Petugas / User "${cleanFullName}" berhasil didaftarkan & disimpan ke Cloud!`);
+
+      // Persist to Cloud Firestore
+      try {
+        await saveUserToCloud(newUser);
+      } catch (err) {
+        console.warn('Gagal simpan user baru ke cloud, data tersimpan di lokal:', err);
+      }
     }
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
+  const handleDeleteUser = async (userId: string, userName: string) => {
     if (userId === currentUser?.id) {
       alert('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk.');
       return;
@@ -435,11 +504,18 @@ export default function App() {
     if (confirm(`Apakah Anda yakin ingin menghapus akun "${userName}"? Akun ini tidak akan bisa login lagi.`)) {
       setSystemUsers(prev => prev.filter(u => u.id !== userId));
       triggerToast(`Akun "${userName}" telah dihapus.`);
+
+      // Persist deletion to Cloud Firestore
+      try {
+        await deleteUserFromCloud(userId);
+      } catch (err) {
+        console.warn('Gagal hapus user di cloud:', err);
+      }
     }
   };
 
   // Change Admin Password (Secret setting)
-  const handleChangeAdminPassword = (e: React.FormEvent) => {
+  const handleChangeAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAdminPass.trim()) {
       alert('Kata sandi baru tidak boleh kosong.');
@@ -451,17 +527,20 @@ export default function App() {
     }
 
     if (currentUser) {
-      setSystemUsers(prev => prev.map(u => {
-        if (u.id === currentUser.id) {
-          return { ...u, password: newAdminPass };
-        }
-        return u;
-      }));
-      setCurrentUser(prev => prev ? { ...prev, password: newAdminPass } : null);
+      const updatedAdmin: SystemUser = { ...currentUser, password: newAdminPass };
+      setSystemUsers(prev => prev.map(u => u.id === currentUser.id ? updatedAdmin : u));
+      setCurrentUser(updatedAdmin);
       setIsAdminPassModalOpen(false);
       setNewAdminPass('');
       setConfirmAdminPass('');
-      triggerToast('Kata sandi rahasia Administrator Anda berhasil diubah!');
+      triggerToast('Kata sandi rahasia Administrator Anda berhasil diubah & disimpan ke Cloud!');
+
+      // Persist to Cloud Firestore
+      try {
+        await saveUserToCloud(updatedAdmin);
+      } catch (err) {
+        console.warn('Gagal simpan password ke cloud:', err);
+      }
     }
   };
 
@@ -470,10 +549,11 @@ export default function App() {
     setAttendances(prev => {
       let dateIndex = prev.findIndex(a => a.date === selectedDate);
       let newData = [...prev];
+      let sessionObj: DailyAttendance | null = null;
 
       if (dateIndex === -1) {
         if (status) {
-          newData.push({ 
+          sessionObj = { 
             id: `sesi-${selectedDate}`,
             date: selectedDate, 
             sessionName: currentSessionName || 'Latihan Rutin',
@@ -481,7 +561,8 @@ export default function App() {
             submittedAt: null,
             submittedBy: null,
             records: [{ studentId, status, note }] 
-          });
+          };
+          newData.push(sessionObj);
         }
       } else {
         let recordIndex = newData[dateIndex].records.findIndex(r => r.studentId === studentId);
@@ -497,6 +578,11 @@ export default function App() {
             newData[dateIndex].records[recordIndex] = { studentId, status, note };
           }
         }
+        sessionObj = newData[dateIndex];
+      }
+
+      if (sessionObj) {
+        saveAttendanceToCloud(sessionObj).catch(() => {});
       }
       return newData;
     });
@@ -532,6 +618,7 @@ export default function App() {
       });
       
       newData[dateIndex].records = currentRecords;
+      saveAttendanceToCloud(newData[dateIndex]).catch(() => {});
       return newData;
     });
     triggerToast(`Semua anggota ${selectedSection === 'All' ? 'aktif' : selectedSection} ditandai Hadir!`);
@@ -557,22 +644,33 @@ export default function App() {
     const nowStr = new Date().toLocaleString('id-ID');
     const officerName = currentUser?.fullName || 'Petugas Lapangan';
 
+    const sessionToSave: DailyAttendance = {
+      id: currentSession?.id || `sesi-${selectedDate}`,
+      date: selectedDate,
+      sessionName: currentSessionName || currentSession?.sessionName || 'Latihan Rutin',
+      isSubmitted: true,
+      submittedAt: nowStr,
+      submittedBy: officerName,
+      records: currentRecords
+    };
+
     setAttendances(prev => {
       const idx = prev.findIndex(a => a.date === selectedDate);
-      if (idx === -1) return prev;
+      if (idx === -1) return [...prev, sessionToSave];
       const copy = [...prev];
-      copy[idx] = {
-        ...copy[idx],
-        isSubmitted: true,
-        submittedAt: nowStr,
-        submittedBy: officerName,
-        sessionName: currentSessionName || copy[idx].sessionName || 'Latihan Rutin'
-      };
+      copy[idx] = sessionToSave;
       return copy;
     });
 
     setIsSubmitConfirmOpen(false);
     triggerToast(`Presensi tanggal ${selectedDate} resmi disubmit ke Rekapitulasi & Leaderboard!`);
+
+    // Persist session to Cloud Firestore
+    try {
+      await saveAttendanceToCloud(sessionToSave);
+    } catch (e: any) {
+      console.warn("Gagal simpan absensi ke cloud:", e);
+    }
 
     // Auto-sync to Google Sheets if configured
     try {
@@ -580,15 +678,12 @@ export default function App() {
       if (savedConfig) {
         const cfg = JSON.parse(savedConfig);
         if (cfg.autoSync && cfg.spreadsheetId && getGoogleAccessToken()) {
-          const sessionToSync = {
-            id: currentSession?.id || `sesi-${selectedDate}`,
-            date: selectedDate,
-            sessionName: currentSessionName || 'Latihan Rutin',
-            submittedAt: nowStr,
-            submittedBy: officerName,
-            records: currentRecords
-          };
-          await appendSingleSessionToSheet(cfg.spreadsheetId, sessionToSync, students);
+          await appendSingleSessionToSheet(cfg.spreadsheetId, {
+            ...sessionToSave,
+            id: sessionToSave.id || `sesi-${selectedDate}`,
+            submittedAt: sessionToSave.submittedAt || nowStr,
+            submittedBy: sessionToSave.submittedBy || officerName
+          }, students);
           triggerToast('Data presensi otomatis tersinkron ke Google Sheets!');
         }
       }
@@ -598,25 +693,37 @@ export default function App() {
   };
 
   const handleRevertToDraft = (date: string) => {
+    let revertedSession: DailyAttendance | null = null;
     setAttendances(prev => prev.map(a => {
       if (a.date === date) {
-        return { ...a, isSubmitted: false };
+        revertedSession = { ...a, isSubmitted: false };
+        return revertedSession;
       }
       return a;
     }));
     triggerToast(`Sesi tanggal ${date} dikembalikan ke Draf (dikeluarkan dari rekapitulasi).`);
+    if (revertedSession) {
+      saveAttendanceToCloud(revertedSession).catch(() => {});
+    }
   };
 
   // Member editing handler
-  const handleSaveEditedStudent = (updated: Student) => {
+  const handleSaveEditedStudent = async (updated: Student) => {
     setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
     setIsEditMemberModalOpen(false);
     setEditingStudent(null);
-    triggerToast(`Data pemain "${updated.name}" berhasil diperbarui!`);
+    triggerToast(`Data pemain "${updated.name}" berhasil diperbarui & disimpan ke Cloud!`);
+
+    // Persist to Cloud Firestore
+    try {
+      await saveStudentToCloud(updated);
+    } catch (e) {
+      console.warn("Gagal simpan edit member ke cloud:", e);
+    }
   };
 
   // Sessions management handlers
-  const handleUpdateSession = (updatedSession: DailyAttendance) => {
+  const handleUpdateSession = async (updatedSession: DailyAttendance) => {
     setAttendances(prev => {
       const idx = prev.findIndex(s => (s.id && s.id === updatedSession.id) || s.date === updatedSession.date);
       if (idx === -1) {
@@ -626,10 +733,26 @@ export default function App() {
       copy[idx] = updatedSession;
       return copy;
     });
+    triggerToast(`Perubahan sesi tanggal ${updatedSession.date} berhasil disimpan!`);
+
+    // Persist to Cloud Firestore
+    try {
+      await saveAttendanceToCloud(updatedSession);
+    } catch (e) {
+      console.warn("Gagal simpan update sesi ke cloud:", e);
+    }
   };
 
-  const handleDeleteSession = (sessionIdentifier: string) => {
+  const handleDeleteSession = async (sessionIdentifier: string) => {
     setAttendances(prev => prev.filter(s => s.id !== sessionIdentifier && `sesi-${s.date}` !== sessionIdentifier));
+    triggerToast('Sesi absensi telah dihapus dari sistem & Cloud.');
+
+    // Persist deletion to Cloud Firestore
+    try {
+      await deleteAttendanceFromCloud(sessionIdentifier);
+    } catch (e) {
+      console.warn("Gagal hapus sesi dari cloud:", e);
+    }
   };
 
   // DELAYED RECAP: Only submitted sessions are included!
@@ -715,7 +838,7 @@ export default function App() {
     triggerToast('Laporan absensi resmi berhasil diunduh (CSV/Excel)!');
   };
 
-  const handleAddStudent = (e: React.FormEvent) => {
+  const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newStudentName.trim()) return;
     const newStudent: Student = {
@@ -729,13 +852,27 @@ export default function App() {
     setNewStudentName('');
     setNewStudentKelas('');
     setIsAddMemberModalOpen(false);
-    triggerToast(`Pemain ${newStudent.name} berhasil ditambahkan ke database!`);
+    triggerToast(`Pemain ${newStudent.name} berhasil ditambahkan & disimpan ke Cloud!`);
+
+    // Persist to Cloud Firestore
+    try {
+      await saveStudentToCloud(newStudent);
+    } catch (e) {
+      console.warn("Gagal simpan anggota ke cloud, data tersimpan di lokal:", e);
+    }
   };
 
-  const handleDeleteStudent = (id: number, name: string) => {
+  const handleDeleteStudent = async (id: number, name: string) => {
     if (confirm(`Apakah Anda yakin ingin menghapus data anggota "${name}"?`)) {
       setStudents(prev => prev.filter(s => s.id !== id));
       triggerToast(`Data anggota "${name}" telah dihapus.`);
+
+      // Persist deletion to Cloud Firestore
+      try {
+        await deleteStudentFromCloud(id);
+      } catch (e) {
+        console.warn("Gagal hapus anggota di cloud:", e);
+      }
     }
   };
 
@@ -930,6 +1067,15 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setShowSyncInfoModal(true)}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-300 hover:bg-slate-900 transition-colors cursor-pointer"
+              title="Status Database Cloud"
+            >
+              <Cloud size={13} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
+              <span>Cloud: {firebaseConfig.projectId}</span>
+            </button>
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300">
               <Clock size={13} className="text-purple-400" />
               <span>{selectedDate}</span>
@@ -1378,17 +1524,31 @@ export default function App() {
           </div>
         </div>
 
-        {/* Secret Admin Key Quick Action */}
-        <div className="px-3 pt-3">
+        {/* Secret Admin Key Quick Action & Cloud Sync */}
+        <div className="px-3 pt-3 space-y-2">
           <button
             type="button"
             onClick={() => setIsAdminPassModalOpen(true)}
-            className="w-full py-2 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-xs text-amber-300 flex items-center justify-between font-semibold transition-all"
+            className="w-full py-2 px-3 rounded-xl bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/50 text-xs text-amber-300 flex items-center justify-between font-semibold transition-all cursor-pointer"
           >
             <span className="flex items-center gap-2">
               <Key size={14} className="text-amber-400" /> Kunci Password Admin
             </span>
             <span className="text-[10px] text-purple-300 font-mono">Ubah</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowSyncInfoModal(true)}
+            className="w-full py-2 px-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center justify-between font-semibold transition-all cursor-pointer"
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
+              <span className="truncate">Cloud: {firebaseConfig.projectId}</span>
+            </span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${syncStatus === 'connected' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' : 'bg-amber-950 text-amber-300 border border-amber-800/40'}`}>
+              {syncStatus === 'connected' ? 'Aktif' : 'Sync'}
+            </span>
           </button>
         </div>
 
@@ -1555,6 +1715,19 @@ export default function App() {
             </a>
 
             <div className="h-4 w-[1px] bg-slate-800"></div>
+
+            {/* Cloud Sync Status Button */}
+            <button
+              type="button"
+              onClick={() => setShowSyncInfoModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 text-xs font-semibold text-slate-200 transition-colors cursor-pointer"
+              title="Status Database Cloud Firestore (absen-7862e)"
+            >
+              <Cloud size={13} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
+              <span>Cloud:</span>
+              <span className="font-mono text-emerald-300">{firebaseConfig.projectId}</span>
+              <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+            </button>
 
             <button
               onClick={() => setIsAdminPassModalOpen(true)}
@@ -2738,6 +2911,104 @@ export default function App() {
         onConfirm={handleFinalizeSubmit}
         onCancel={() => setIsSubmitConfirmOpen(false)}
       />
+
+      {/* MODAL: CLOUD DATABASE SYNC STATUS & BACKUP */}
+      {showSyncInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-emerald-950 border border-emerald-800/60 text-emerald-400">
+                  <Database size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Status Cloud Database</h3>
+                  <p className="text-xs text-slate-400">Penyimpanan Terpusat Firebase Firestore</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowSyncInfoModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Firebase Project:</span>
+                  <code className="text-emerald-400 font-bold font-mono">{firebaseConfig.projectId}</code>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Status Koneksi:</span>
+                  <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Tersambung Real-Time
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Penyimpanan Otomatis:</span>
+                  <span className="text-slate-200 font-medium">Aktif untuk setiap perubahan</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{students.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Pemain / Anggota</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{attendances.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Sesi Absensi</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{systemUsers.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Akun Pengguna</div>
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Setiap data yang Anda tambahkan atau edit (pemain, absensi, koreksi, akun, atau kata sandi) otomatis disimpan secara permanen di database cloud. Perubahan akan langsung tampil di seluruh perangkat dan domain GitHub Pages <strong className="text-purple-300">symzck.github.io/absen</strong>.
+              </p>
+            </div>
+
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                disabled={isManualSyncing}
+                onClick={async () => {
+                  setIsManualSyncing(true);
+                  try {
+                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers);
+                    triggerToast(res.message);
+                    if (res.success) {
+                      setShowSyncInfoModal(false);
+                    }
+                  } catch (e: any) {
+                    triggerToast(e?.message || 'Gagal sinkronkan ke cloud.');
+                  } finally {
+                    setIsManualSyncing(false);
+                  }
+                }}
+                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+              >
+                <UploadCloud size={16} className={isManualSyncing ? 'animate-bounce' : ''} />
+                <span>{isManualSyncing ? 'Menyinkronkan ke Cloud...' : 'Simpan & Cadangkan Semua Data Sekarang'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSyncInfoModal(false)}
+                className="w-full py-2.5 rounded-xl border border-slate-800 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

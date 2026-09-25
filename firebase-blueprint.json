@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Marching band member profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number", "description": "Student numeric ID" },
+        "name": { "type": "string", "description": "Full name of the student" },
+        "kelas": { "type": "string", "description": "Class grade" },
+        "asrama": { "type": "string", "description": "Dormitory code" },
+        "section": { "type": "string", "description": "Instrument section" }
+      },
+      "required": ["id", "name", "kelas", "asrama", "section"]
+    },
+    "DailyAttendance": {
+      "title": "DailyAttendance",
+      "description": "Daily attendance record session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Session ID" },
+        "date": { "type": "string", "description": "Date YYYY-MM-DD" },
+        "sessionName": { "type": "string", "description": "Session title" },
+        "isSubmitted": { "type": "boolean", "description": "Whether submitted officially" },
+        "submittedAt": { "type": "string", "description": "Timestamp formatted string" },
+        "submittedBy": { "type": "string", "description": "Name of submitting user" },
+        "records": { "type": "array", "description": "Array of member attendance records" }
+      },
+      "required": ["date", "records"]
+    },
+    "SystemUser": {
+      "title": "SystemUser",
+      "description": "Application user account",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "User identifier" },
+        "username": { "type": "string", "description": "Login username" },
+        "password": { "type": "string", "description": "Account password" },
+        "fullName": { "type": "string", "description": "Display name" },
+        "role": { "type": "string", "description": "admin or petugas" },
+        "assignedSection": { "type": "string", "description": "Section filter" },
+        "createdAt": { "type": "string", "description": "Creation date" }
+      },
+      "required": ["id", "username", "password", "fullName", "role"]
+    },
+    "AppSetting": {
+      "title": "AppSetting",
+      "description": "General application settings",
+      "type": "object",
+      "properties": {
+        "spreadsheetId": { "type": "string", "description": "Google Sheet ID" },
+        "spreadsheetTitle": { "type": "string", "description": "Sheet Title" },
+        "spreadsheetUrl": { "type": "string", "description": "Full Sheet URL" },
+        "autoSync": { "type": "boolean", "description": "Auto sync toggle" },
+        "lastSyncTime": { "type": "string", "description": "Last sync time" }
+      }
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "All registered marching band students"
+    },
+    "/attendances/{attendanceId}": {
+      "schema": { "$ref": "#/entities/DailyAttendance" },
+      "description": "Attendance sessions and records"
+    },
+    "/system_users/{userId}": {
+      "schema": { "$ref": "#/entities/SystemUser" },
+      "description": "System accounts for admin and field officers"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSetting" },
+      "description": "Application settings and sync config"
+    }
+  }
+}
