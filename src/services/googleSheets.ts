@@ -1,4 +1,38 @@
 import { getGoogleAccessToken } from './googleAuth';
+import firebaseConfig from '../../firebase-applet-config.json';
+
+export class GoogleApiDisabledError extends Error {
+  isApiDisabled = true;
+  projectNumber: string;
+  sheetsUrl: string;
+  driveUrl: string;
+
+  constructor(message: string, projectNumber: string = '1001342587333') {
+    super(message);
+    this.name = 'GoogleApiDisabledError';
+    this.projectNumber = projectNumber;
+    this.sheetsUrl = `https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${projectNumber}`;
+    this.driveUrl = `https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projectNumber}`;
+  }
+}
+
+export function parseGoogleApiError(errorData: any, defaultMsg: string): Error {
+  const rawMsg = errorData?.error?.message || defaultMsg;
+  if (
+    rawMsg.includes('sheets.googleapis.com') ||
+    rawMsg.includes('drive.googleapis.com') ||
+    rawMsg.includes('has not been used in project') ||
+    rawMsg.includes('is disabled')
+  ) {
+    const match = rawMsg.match(/project[ =](\d+)/i);
+    const projNum = match ? match[1] : (firebaseConfig.messagingSenderId || '1001342587333');
+    return new GoogleApiDisabledError(
+      `Google Sheets API belum diaktifkan di Google Cloud Project ${projNum}. Silakan aktifkan API tersebut di Google Cloud Console untuk melanjutkan.`,
+      projNum
+    );
+  }
+  return new Error(rawMsg);
+}
 
 export interface SheetConfig {
   spreadsheetId: string;
@@ -51,7 +85,7 @@ export const createAttendanceSpreadsheet = async (
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || 'Gagal membuat Google Spreadsheet baru.');
+    throw parseGoogleApiError(errorData, 'Gagal membuat Google Spreadsheet baru.');
   }
 
   const result = await response.json();
@@ -278,7 +312,7 @@ export const syncAllDataToGoogleSheet = async (
 
   if (!updateRes.ok) {
     const err = await updateRes.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Gagal sinkronisasi data ke Google Sheets.');
+    throw parseGoogleApiError(err, 'Gagal sinkronisasi data ke Google Sheets.');
   }
 
   return {
@@ -340,6 +374,6 @@ export const appendSingleSessionToSheet = async (
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Gagal menambahkan sesi ke Google Sheets.');
+    throw parseGoogleApiError(err, 'Gagal menambahkan sesi ke Google Sheets.');
   }
 };

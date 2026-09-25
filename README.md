@@ -28,6 +28,18 @@ Bagi pengguna fitur Google Sheets Sync saat berjalan di domain GitHub Pages:
 
 ---
 
+## 📊 Aktivasi Google Sheets API & Drive API (Google Cloud)
+Untuk mengizinkan pembuatan otomatis dan sinkronisasi spreadsheet di project Anda:
+1. Buka link aktivasi **Google Sheets API**:
+   [https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=1001342587333](https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=1001342587333)
+   -> Klik tombol **ENABLE** (Aktifkan).
+2. Buka link aktivasi **Google Drive API**:
+   [https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=1001342587333](https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=1001342587333)
+   -> Klik tombol **ENABLE** (Aktifkan).
+3. Setelah kedua API aktif, fitur *"Buat Spreadsheet Baru Otomatis"* dan sinkronisasi akan langsung bekerja dengan mulus.
+
+---
+
 ## 🗄️ Konfigurasi Database Cloud (Cloud Firestore)
 Aplikasi ini kini menyimpan seluruh data secara permanen dan real-time di Cloud Firestore:
 1. Buka [Firebase Console - Firestore Database](https://console.firebase.google.com/project/absen-7862e/firestore)

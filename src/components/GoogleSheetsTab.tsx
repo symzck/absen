@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileSpreadsheet, ExternalLink, RefreshCw, CheckCircle2, 
   AlertCircle, ShieldCheck, Link2, Sparkles, LogOut, Check,
-  Globe, Copy
+  Globe, Copy, X
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { 
@@ -74,6 +74,13 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
 
   const [inputSheetId, setInputSheetId] = useState(sheetConfig.spreadsheetId);
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [apiDisabledInfo, setApiDisabledInfo] = useState<{
+    isOpen: boolean;
+    projectNumber: string;
+    sheetsUrl: string;
+    driveUrl: string;
+    message: string;
+  } | null>(null);
 
   const handleCopyGithubDomain = () => {
     navigator.clipboard.writeText('symzck.github.io');
@@ -145,6 +152,17 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
       triggerToast('Google Spreadsheet baru berhasil dibuat dan disinkronkan!');
     } catch (err: any) {
       console.error('Create Sheet Error:', err);
+      const isApiDisabled = err.isApiDisabled || err.message?.includes('Google Sheets API') || err.message?.includes('sheets.googleapis.com') || err.message?.includes('disabled');
+      const projNum = err.projectNumber || firebaseConfig.messagingSenderId || '1001342587333';
+      if (isApiDisabled) {
+        setApiDisabledInfo({
+          isOpen: true,
+          projectNumber: projNum,
+          sheetsUrl: `https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${projNum}`,
+          driveUrl: `https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projNum}`,
+          message: err.message || 'Google Sheets API belum diaktifkan di Google Cloud Console.'
+        });
+      }
       triggerToast(`Error: ${err.message || 'Gagal membuat Google Sheet'}`);
     } finally {
       setIsCreatingSheet(false);
@@ -205,6 +223,17 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
       triggerToast(`Sinkronisasi Sukses: ${res.rowsPresensi} baris presensi & ${res.rowsRekap} baris rekap tersinkron!`);
     } catch (err: any) {
       console.error('Sync Error:', err);
+      const isApiDisabled = err.isApiDisabled || err.message?.includes('Google Sheets API') || err.message?.includes('sheets.googleapis.com') || err.message?.includes('disabled');
+      const projNum = err.projectNumber || firebaseConfig.messagingSenderId || '1001342587333';
+      if (isApiDisabled) {
+        setApiDisabledInfo({
+          isOpen: true,
+          projectNumber: projNum,
+          sheetsUrl: `https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${projNum}`,
+          driveUrl: `https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${projNum}`,
+          message: err.message || 'Google Sheets API belum diaktifkan di Google Cloud Console.'
+        });
+      }
       triggerToast(`Gagal sinkronisasi: ${err.message}`);
     } finally {
       setIsSyncing(false);
@@ -363,6 +392,51 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
               </div>
             </div>
 
+            {/* Google Cloud API Activation Guide Card */}
+            <div className="bg-amber-950/20 border border-amber-500/40 rounded-2xl p-4 text-xs space-y-3 mt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <AlertCircle size={16} className="text-amber-400 shrink-0" />
+                  <span>Aktivasi API Google Cloud (Project {firebaseConfig.messagingSenderId || '1001342587333'})</span>
+                </div>
+                <span className="text-[10px] font-mono bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-800/40">
+                  Wajib 1x
+                </span>
+              </div>
+
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Jika tombol <em>"Buat Spreadsheet Baru"</em> memunculkan error <em>"Google Sheets API has not been used..."</em>, aktifkan API resmi Google Sheets dan Drive di Google Cloud Console dengan 1-klik:
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                <a
+                  href={`https://console.developers.google.com/apis/api/sheets.googleapis.com/overview?project=${firebaseConfig.messagingSenderId || '1001342587333'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/40 text-amber-200 hover:text-white text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileSpreadsheet size={15} className="text-emerald-400" />
+                    <span>1. Aktifkan Google Sheets API</span>
+                  </span>
+                  <ExternalLink size={12} className="text-amber-400" />
+                </a>
+
+                <a
+                  href={`https://console.developers.google.com/apis/api/drive.googleapis.com/overview?project=${firebaseConfig.messagingSenderId || '1001342587333'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 px-3 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/40 text-purple-200 hover:text-white text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={15} className="text-purple-400" />
+                    <span>2. Aktifkan Google Drive API</span>
+                  </span>
+                  <ExternalLink size={12} className="text-purple-400" />
+                </a>
+              </div>
+            </div>
+
             {/* GitHub Domain & OAuth Settings Card */}
             <div className="bg-slate-950/80 border border-purple-500/30 rounded-2xl p-4 text-xs space-y-3 mt-4">
               <div className="flex items-center justify-between">
@@ -514,6 +588,97 @@ export const GoogleSheetsTab: React.FC<GoogleSheetsTabProps> = ({
         onConfirm={executeSync}
         onCancel={() => setIsConfirmModalOpen(false)}
       />
+
+      {/* Modal: Google Cloud API Activation Required */}
+      {apiDisabledInfo?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400">
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Aktivasi Google Sheets API Diperlukan</h3>
+                  <p className="text-xs text-slate-400">Google Cloud Project: {apiDisabledInfo.projectNumber}</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setApiDisabledInfo(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs leading-relaxed">
+                Google Cloud Console mewajibkan <strong>Google Sheets API</strong> & <strong>Google Drive API</strong> diaktifkan pada project Anda sebelum spreadsheet dapat dibuat atau disinkronkan secara otomatis.
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs font-bold text-white">Langkah Mudah Penyelesaian (1 Menit):</div>
+                <ol className="list-decimal list-inside space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                  <li>Klik tombol <strong className="text-emerald-400">"1. Buka & Aktifkan Google Sheets API"</strong> di bawah.</li>
+                  <li>Di halaman Google Cloud Console yang terbuka, klik tombol biru <strong className="text-sky-400 font-bold">ENABLE (Aktifkan)</strong>.</li>
+                  <li>Lakukan hal yang sama untuk tombol <strong className="text-purple-400">"2. Buka & Aktifkan Google Drive API"</strong>.</li>
+                  <li>Tutup tab console, lalu klik tombol <strong className="text-emerald-400 font-bold">"Coba Buat Spreadsheet Lagi"</strong> di bawah.</li>
+                </ol>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 pt-1">
+                <a
+                  href={apiDisabledInfo.sheetsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-xs flex items-center justify-between shadow-lg shadow-emerald-950 transition-all cursor-pointer group"
+                >
+                  <span className="flex items-center gap-2">
+                    <FileSpreadsheet size={16} />
+                    <span>1. Buka & Aktifkan Google Sheets API (1-Klik)</span>
+                  </span>
+                  <ExternalLink size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                </a>
+
+                <a
+                  href={apiDisabledInfo.driveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs flex items-center justify-between border border-slate-700 transition-all cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={15} className="text-purple-400" />
+                    <span>2. Buka & Aktifkan Google Drive API</span>
+                  </span>
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setApiDisabledInfo(null);
+                  handleCreateNewSheet();
+                }}
+                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+              >
+                <RefreshCw size={14} />
+                <span>Coba Buat Spreadsheet Lagi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setApiDisabledInfo(null)}
+                className="py-2.5 px-4 rounded-xl border border-slate-700 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

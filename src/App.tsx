@@ -213,6 +213,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
   const [toastMessage, setToastMessage] = useState('Aksi berhasil disimpan.');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
   const [loginError, setLoginError] = useState('');
 
   // Password visibility on login
@@ -352,12 +353,14 @@ export default function App() {
     }
   }, [currentUser]);
 
-  const triggerToast = (msg: string) => {
+  const triggerToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
+    const isError = type === 'error' || msg.toLowerCase().startsWith('error') || msg.toLowerCase().includes('gagal');
+    setToastType(isError ? 'error' : type);
     setToastMessage(msg);
     setShowSuccessMsg(true);
     setTimeout(() => {
       setShowSuccessMsg(false);
-    }, 2800);
+    }, isError ? 8000 : 3000);
   };
 
   // Secure Unified Login Handler
@@ -1090,11 +1093,26 @@ export default function App() {
           </div>
         </header>
 
-        {/* Success Toast */}
+        {/* Toast Notification */}
         {showSuccessMsg && (
-          <div className="fixed top-5 right-5 z-50 bg-emerald-950 border border-emerald-500/60 text-emerald-200 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in">
-            <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-            <div className="text-xs font-semibold">{toastMessage}</div>
+          <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in max-w-lg ${
+            toastType === 'error'
+              ? 'bg-rose-950 border border-rose-500/70 text-rose-200'
+              : 'bg-emerald-950 border border-emerald-500/60 text-emerald-200'
+          }`}>
+            {toastType === 'error' ? (
+              <AlertCircle size={20} className="text-rose-400 shrink-0" />
+            ) : (
+              <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+            )}
+            <div className="text-xs font-semibold break-words flex-1">{toastMessage}</div>
+            <button 
+              type="button"
+              onClick={() => setShowSuccessMsg(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg shrink-0"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
 
@@ -1747,9 +1765,24 @@ export default function App() {
 
         {/* Toast */}
         {showSuccessMsg && (
-          <div className="fixed top-5 right-5 z-50 bg-emerald-950 border border-emerald-500/60 text-emerald-200 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in">
-            <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
-            <div className="text-xs font-semibold">{toastMessage}</div>
+          <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in max-w-lg ${
+            toastType === 'error'
+              ? 'bg-rose-950 border border-rose-500/70 text-rose-200'
+              : 'bg-emerald-950 border border-emerald-500/60 text-emerald-200'
+          }`}>
+            {toastType === 'error' ? (
+              <AlertCircle size={20} className="text-rose-400 shrink-0" />
+            ) : (
+              <CheckCircle2 size={20} className="text-emerald-400 shrink-0" />
+            )}
+            <div className="text-xs font-semibold break-words flex-1">{toastMessage}</div>
+            <button 
+              type="button"
+              onClick={() => setShowSuccessMsg(false)}
+              className="text-slate-400 hover:text-white p-1 rounded-lg shrink-0 cursor-pointer"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
 
