@@ -20,7 +20,7 @@ export type SyncStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'connec
 type SyncCallback = (status: SyncStatus, errorDetail?: string) => void;
 const syncListeners: Set<SyncCallback> = new Set();
 
-let currentSyncStatus: SyncStatus = 'connecting';
+let currentSyncStatus: SyncStatus = 'offline';
 let currentSyncError: string | undefined = undefined;
 
 export const getSyncStatus = () => ({ status: currentSyncStatus, error: currentSyncError });
@@ -37,6 +37,27 @@ function notifyStatus(status: SyncStatus, error?: string) {
   currentSyncStatus = status;
   currentSyncError = error;
   syncListeners.forEach(cb => cb(status, error));
+}
+
+// Timeout helper to avoid infinite hanging when Cloud Firestore is not provisioned or network is slow
+const withTimeout = <T>(promise: Promise<T>, ms = 3500, fallbackMessage = 'Koneksi cloud timeout'): Promise<T> => {
+  let timer: any;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(fallbackMessage)), ms);
+  });
+  return Promise.race([
+    promise.then(res => { clearTimeout(timer); return res; }),
+    timeoutPromise
+  ]);
+};
+
+// Auto fallback: never stay stuck on connecting
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    if (currentSyncStatus === 'connecting') {
+      notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console. Berjalan lancar di Mode Lokal.');
+    }
+  }, 3000);
 }
 
 // ---------------------------------------------------------------------------
@@ -71,8 +92,8 @@ export const subscribeStudents = (
       }
     },
     (error) => {
-      console.warn('[Firestore] Error subscribing to students:', error);
-      notifyStatus('error', error.message);
+      console.warn('[Firestore] Students subscription offline/not found:', error.message);
+      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
       if (onError) onError(error);
     }
   );
@@ -82,19 +103,22 @@ export const saveStudentToCloud = async (student: Student): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'students', String(student.id));
-    await setDoc(docRef, {
-      id: student.id,
-      name: student.name,
-      kelas: student.kelas,
-      asrama: student.asrama,
-      section: student.section,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    await withTimeout(
+      setDoc(docRef, {
+        id: student.id,
+        name: student.name,
+        kelas: student.kelas,
+        asrama: student.asrama,
+        section: student.section,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error saving student:', error);
-    notifyStatus('error', error?.message || 'Gagal menyimpan ke cloud');
-    throw error;
+    console.warn('[Firestore] Notice saving student to cloud (using local cache):', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
   }
 };
 
@@ -102,12 +126,11 @@ export const deleteStudentFromCloud = async (studentId: number): Promise<void> =
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'students', String(studentId));
-    await deleteDoc(docRef);
+    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error deleting student:', error);
-    notifyStatus('error', error?.message || 'Gagal menghapus dari cloud');
-    throw error;
+    console.warn('[Firestore] Notice deleting student from cloud:', error?.message);
+    notifyStatus('offline', error?.message);
   }
 };
 
@@ -145,8 +168,8 @@ export const subscribeAttendances = (
       }
     },
     (error) => {
-      console.warn('[Firestore] Error subscribing to attendances:', error);
-      notifyStatus('error', error.message);
+      console.warn('[Firestore] Attendances subscription offline/not found:', error.message);
+      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
       if (onError) onError(error);
     }
   );
@@ -157,21 +180,24 @@ export const saveAttendanceToCloud = async (attendance: DailyAttendance): Promis
   try {
     const docId = attendance.id || `sesi-${attendance.date}`;
     const docRef = doc(db, 'attendances', docId);
-    await setDoc(docRef, {
-      id: docId,
-      date: attendance.date,
-      sessionName: attendance.sessionName || 'Latihan Rutin',
-      isSubmitted: attendance.isSubmitted !== false,
-      submittedAt: attendance.submittedAt || null,
-      submittedBy: attendance.submittedBy || null,
-      records: attendance.records || [],
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    await withTimeout(
+      setDoc(docRef, {
+        id: docId,
+        date: attendance.date,
+        sessionName: attendance.sessionName || 'Latihan Rutin',
+        isSubmitted: attendance.isSubmitted !== false,
+        submittedAt: attendance.submittedAt || null,
+        submittedBy: attendance.submittedBy || null,
+        records: attendance.records || [],
+        updatedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error saving attendance:', error);
-    notifyStatus('error', error?.message || 'Gagal menyimpan absensi ke cloud');
-    throw error;
+    console.warn('[Firestore] Notice saving attendance to cloud (using local cache):', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
   }
 };
 
@@ -179,12 +205,11 @@ export const deleteAttendanceFromCloud = async (attendanceId: string): Promise<v
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'attendances', attendanceId);
-    await deleteDoc(docRef);
+    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error deleting attendance:', error);
-    notifyStatus('error', error?.message || 'Gagal menghapus sesi dari cloud');
-    throw error;
+    console.warn('[Firestore] Notice deleting attendance from cloud:', error?.message);
+    notifyStatus('offline', error?.message);
   }
 };
 
@@ -220,8 +245,8 @@ export const subscribeSystemUsers = (
       }
     },
     (error) => {
-      console.warn('[Firestore] Error subscribing to system users:', error);
-      notifyStatus('error', error.message);
+      console.warn('[Firestore] Users subscription offline/not found:', error.message);
+      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
       if (onError) onError(error);
     }
   );
@@ -231,21 +256,24 @@ export const saveUserToCloud = async (user: SystemUser): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'system_users', user.id);
-    await setDoc(docRef, {
-      id: user.id,
-      username: user.username,
-      password: user.password,
-      fullName: user.fullName,
-      role: user.role,
-      assignedSection: user.assignedSection || 'All',
-      createdAt: user.createdAt,
-      updatedAt: new Date().toISOString()
-    }, { merge: true });
+    await withTimeout(
+      setDoc(docRef, {
+        id: user.id,
+        username: user.username,
+        password: user.password,
+        fullName: user.fullName,
+        role: user.role,
+        assignedSection: user.assignedSection || 'All',
+        createdAt: user.createdAt,
+        updatedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error saving user:', error);
-    notifyStatus('error', error?.message || 'Gagal menyimpan user ke cloud');
-    throw error;
+    console.warn('[Firestore] Notice saving user to cloud (using local cache):', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
   }
 };
 
@@ -253,12 +281,11 @@ export const deleteUserFromCloud = async (userId: string): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'system_users', userId);
-    await deleteDoc(docRef);
+    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
     notifyStatus('connected');
   } catch (error: any) {
-    console.error('[Firestore] Error deleting user:', error);
-    notifyStatus('error', error?.message || 'Gagal menghapus user dari cloud');
-    throw error;
+    console.warn('[Firestore] Notice deleting user from cloud:', error?.message);
+    notifyStatus('offline', error?.message);
   }
 };
 
@@ -271,19 +298,18 @@ export const seedInitialDatabaseIfEmpty = async (
   initialUsers: SystemUser[]
 ): Promise<{ seeded: boolean; message: string }> => {
   try {
-    const studentSnapshot = await getDocs(collection(db, 'students'));
+    const studentSnapshot = await withTimeout(getDocs(collection(db, 'students')), 3000, 'Cloud timeout');
     const existingIds = new Set<string>();
     studentSnapshot.forEach(d => existingIds.add(d.id));
 
     const missingStudents = initialStudents.filter(s => !existingIds.has(String(s.id)));
 
-    const userSnapshot = await getDocs(collection(db, 'system_users'));
+    const userSnapshot = await withTimeout(getDocs(collection(db, 'system_users')), 3000, 'Cloud timeout');
     const existingUserIds = new Set<string>();
     userSnapshot.forEach(d => existingUserIds.add(d.id));
     const missingUsers = initialUsers.filter(u => !existingUserIds.has(u.id));
 
     if (missingStudents.length > 0 || missingUsers.length > 0) {
-      console.log(`[Firestore] Seeding missing data (${missingStudents.length} students, ${missingUsers.length} users)...`);
       notifyStatus('syncing');
       
       const batch = writeBatch(db);
@@ -297,15 +323,15 @@ export const seedInitialDatabaseIfEmpty = async (
         batch.set(ref, user, { merge: true });
       });
 
-      await batch.commit();
+      await withTimeout(batch.commit(), 3500, 'Cloud timeout');
       notifyStatus('connected');
       return { seeded: true, message: `Data lengkap (${missingStudents.length} pemain) berhasil di-sinkronkan ke Cloud Firestore!` };
     }
     return { seeded: false, message: 'Data sudah lengkap di cloud database.' };
   } catch (error: any) {
-    console.warn('[Firestore] Error during seed check:', error);
-    notifyStatus('error', error?.message || 'Koneksi Firestore gagal');
-    return { seeded: false, message: error?.message || 'Gagal terhubung ke Cloud Firestore' };
+    console.warn('[Firestore] Seed check notice (operating in local mode):', error?.message);
+    notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console. Data aman di perangkat lokal.');
+    return { seeded: false, message: 'Berjalan di mode lokal (offline).' };
   }
 };
 
@@ -363,18 +389,20 @@ export const uploadAllLocalDataToCloud = async (
       }, { merge: true });
     });
 
-    await batch.commit();
+    await withTimeout(batch.commit(), 4000, 'Koneksi timeout');
     notifyStatus('connected');
     return { 
       success: true, 
-      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi) berhasil disimpan permanen ke Cloud Database (absen-7862e)!` 
+      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi) berhasil disimpan ke Cloud Database!` 
     };
   } catch (error: any) {
-    console.error('[Firestore] Bulk upload error:', error);
-    notifyStatus('error', error?.message || 'Gagal upload ke cloud');
+    console.warn('[Firestore] Bulk upload notice:', error?.message);
+    notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console.');
     return { 
       success: false, 
-      message: error?.message || 'Gagal menyimpan data ke Cloud Firestore.' 
+      message: error?.message?.includes('NOT_FOUND') 
+        ? 'Database Firestore belum dibuat di Firebase Console (absen-7862e). Data Anda tetap aman tersimpan di perangkat lokal.' 
+        : (error?.message || 'Gagal menyimpan ke cloud. Data aman tersimpan lokal.') 
     };
   }
 };

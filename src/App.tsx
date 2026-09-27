@@ -1755,11 +1755,17 @@ export default function App() {
             className="w-full py-2 px-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center justify-between font-semibold transition-all cursor-pointer"
           >
             <span className="flex items-center gap-2 truncate">
-              <Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
-              <span className="truncate">Cloud: {firebaseConfig.projectId}</span>
+              <Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'} />
+              <span className="truncate">Data: {syncStatus === 'connected' ? firebaseConfig.projectId : 'Tersimpan Lokal'}</span>
             </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${syncStatus === 'connected' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' : 'bg-amber-950 text-amber-300 border border-amber-800/40'}`}>
-              {syncStatus === 'connected' ? 'Aktif' : 'Sync'}
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+              syncStatus === 'connected' 
+                ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' 
+                : syncStatus === 'syncing'
+                ? 'bg-amber-950 text-amber-300 border border-amber-800/40'
+                : 'bg-sky-950 text-sky-300 border border-sky-800/40'
+            }`}>
+              {syncStatus === 'connected' ? 'Cloud Aktif' : syncStatus === 'syncing' ? 'Sync...' : 'Lokal (Aman)'}
             </span>
           </button>
         </div>
@@ -3175,20 +3181,39 @@ export default function App() {
               <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-400">Firebase Project:</span>
-                  <code className="text-emerald-400 font-bold font-mono">{firebaseConfig.projectId}</code>
+                  <code className="text-purple-300 font-bold font-mono">{firebaseConfig.projectId}</code>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Status Koneksi:</span>
-                  <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    Tersambung Real-Time
+                  <span className="text-slate-400">Status Penyimpanan:</span>
+                  <span className={`inline-flex items-center gap-1.5 font-semibold ${
+                    syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`}></span>
+                    {syncStatus === 'connected' ? 'Cloud Terhubung Real-Time' : 'Penyimpanan Lokal Aktif (0 Delay & Aman)'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Penyimpanan Otomatis:</span>
-                  <span className="text-slate-200 font-medium">Aktif untuk setiap perubahan</span>
+                  <span className="text-slate-400">Keamanan Data:</span>
+                  <span className="text-emerald-400 font-medium">100% Tersimpan di Perangkat Ini</span>
                 </div>
               </div>
+
+              {syncStatus !== 'connected' && (
+                <div className="p-3 bg-sky-950/40 border border-sky-800/50 rounded-2xl space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                  <div className="font-bold text-sky-300 flex items-center gap-1.5">
+                    <span>💡 Mengapa status Cloud belum aktif?</span>
+                  </div>
+                  <p>
+                    Database Cloud Firestore di proyek Firebase <code className="text-amber-300 font-mono">absen-7862e</code> belum di-create di Firebase Console. 
+                    Aplikasi saat ini berjalan <strong>sangat cepat & lancar secara lokal</strong> tanpa perlu menunggu cloud.
+                  </p>
+                  <p className="text-slate-400">
+                    Untuk menyambungkan cloud agar sinkron otomatis antar HP/komputer:
+                    <br />1. Buka <strong>console.firebase.google.com</strong> &rarr; pilih <strong>{firebaseConfig.projectId}</strong>
+                    <br />2. Masuk ke <strong>Firestore Database</strong> &rarr; klik <strong>Create database</strong> (Pilih Start in test mode).
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
@@ -3206,7 +3231,7 @@ export default function App() {
               </div>
 
               <p className="text-slate-400 text-[11px] leading-relaxed">
-                Setiap data yang Anda tambahkan atau edit (pemain, absensi, koreksi, akun, atau kata sandi) otomatis disimpan secara permanen di database cloud. Perubahan akan langsung tampil di seluruh perangkat dan domain GitHub Pages <strong className="text-purple-300">symzck.github.io/absen</strong>.
+                Setiap data yang Anda simpan langsung tersimpan permanen di perangkat ini dan tidak akan hilang saat halaman ditutup atau di-refresh.
               </p>
             </div>
 

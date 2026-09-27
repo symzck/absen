@@ -51,13 +51,36 @@ export const initGoogleAuth = (
 export const signInWithGoogle = async (): Promise<{ user: User; accessToken: string }> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
+    
+    // Safety timeout of 20 seconds so it never hangs indefinitely
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Koneksi timeout (20 detik). Jika jendela pop-up Google tidak muncul, kemungkinan diblokir oleh browser atau terhalang di dalam frame preview. Silakan izinkan pop-up atau buka aplikasi di tab baru.'));
+      }, 20000);
+    });
+
+    const result = await Promise.race([
+      signInWithPopup(auth, provider),
+      timeoutPromise
+    ]);
+
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('Akses token Google tidak diperoleh.');
     }
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
+  } catch (err: any) {
+    if (err?.code === 'auth/popup-blocked') {
+      throw new Error('Jendela pop-up Google diblokir browser! Silakan klik ikon pop-up di bilah URL browser Anda untuk mengizinkannya, atau buka di tab baru.');
+    }
+    if (err?.code === 'auth/popup-closed-by-user') {
+      throw new Error('Jendela login ditutup sebelum proses selesai.');
+    }
+    if (err?.code === 'auth/cancelled-popup-request') {
+      throw new Error('Permintaan login dibatalkan karena ada aksi baru.');
+    }
+    throw err;
   } finally {
     isSigningIn = false;
   }
