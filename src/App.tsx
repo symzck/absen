@@ -219,10 +219,31 @@ export default function App() {
   // Password visibility on login
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
-  // Student & Attendance Data
+  // Student & Attendance Data with Auto-Recovery
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem('pgt_students');
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_STUDENTS.length) {
+          return parsed;
+        }
+        // If parsed array has fewer students than default, recover full roster while preserving any edits
+        const map = new Map<number, Student>();
+        INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
+        if (Array.isArray(parsed)) {
+          parsed.forEach((s: Student) => {
+            if (s && s.id) {
+              map.set(s.id, { ...map.get(s.id), ...s });
+            }
+          });
+        }
+        const recovered = Array.from(map.values()).sort((a, b) => a.id - b.id);
+        localStorage.setItem('pgt_students', JSON.stringify(recovered));
+        return recovered;
+      } catch (e) {}
+    }
+    return INITIAL_STUDENTS;
   });
 
   const [attendances, setAttendances] = useState<DailyAttendance[]>(() => {
@@ -296,11 +317,25 @@ export default function App() {
       console.warn('[Firestore] Seed check notice:', err);
     });
 
-    // Real-time listener for students
+    // Real-time listener for students (Safe Merge: never discard unedited members)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
-        setStudents(remoteStudents);
-        localStorage.setItem('pgt_students', JSON.stringify(remoteStudents));
+        setStudents(prev => {
+          const map = new Map<number, Student>();
+          // Base: full 43 roster
+          INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
+          // Overlay current local state
+          if (prev && prev.length > 0) {
+            prev.forEach(s => map.set(s.id, { ...map.get(s.id), ...s }));
+          }
+          // Overlay remote changes
+          remoteStudents.forEach(remoteS => {
+            map.set(remoteS.id, { ...map.get(remoteS.id), ...remoteS });
+          });
+          const merged = Array.from(map.values()).sort((a, b) => a.id - b.id);
+          localStorage.setItem('pgt_students', JSON.stringify(merged));
+          return merged;
+        });
       }
     });
 
@@ -322,11 +357,22 @@ export default function App() {
       }
     });
 
-    // Real-time listener for system users
+    // Real-time listener for system users (Safe Merge: never discard default system users)
     const unsubUsers = subscribeSystemUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
-        setSystemUsers(remoteUsers);
-        localStorage.setItem('pgt_system_users', JSON.stringify(remoteUsers));
+        setSystemUsers(prev => {
+          const map = new Map<string, SystemUser>();
+          INITIAL_USERS.forEach(u => map.set(u.id, u));
+          if (prev && prev.length > 0) {
+            prev.forEach(u => map.set(u.id, { ...map.get(u.id), ...u }));
+          }
+          remoteUsers.forEach(ru => {
+            map.set(ru.id, { ...map.get(ru.id), ...ru });
+          });
+          const merged = Array.from(map.values());
+          localStorage.setItem('pgt_system_users', JSON.stringify(merged));
+          return merged;
+        });
       }
     });
 
@@ -961,6 +1007,24 @@ export default function App() {
     link.click();
     document.body.removeChild(link);
     triggerToast('Laporan absensi resmi berhasil diunduh (CSV/Excel)!');
+  };
+
+  const handleRestoreDefaultStudents = async () => {
+    if (confirm('Apakah Anda ingin memulihkan seluruh 43 anggota pemain resmi ke database? Perubahan nama/kelas yang sudah Anda lakukan akan tetap dipertahankan.')) {
+      const map = new Map<number, Student>();
+      INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
+      students.forEach(s => {
+        map.set(s.id, { ...map.get(s.id), ...s });
+      });
+      const restored = Array.from(map.values()).sort((a, b) => a.id - b.id);
+      setStudents(restored);
+      localStorage.setItem('pgt_students', JSON.stringify(restored));
+      triggerToast(`Seluruh ${restored.length} pemain resmi berhasil dipulihkan!`);
+      
+      try {
+        await seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS);
+      } catch (e) {}
+    }
   };
 
   const handleAddStudent = async (e: React.FormEvent) => {
@@ -2629,10 +2693,19 @@ export default function App() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button 
+                    type="button"
+                    onClick={handleRestoreDefaultStudents}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer"
+                    title="Pulihkan dan pastikan seluruh 43 anggota resmi PGT terdata lengkap"
+                  >
+                    <RotateCcw size={14} />
+                    <span>Pulihkan 43 Anggota</span>
+                  </button>
                   <button 
                     onClick={() => setIsAddMemberModalOpen(true)}
-                    className="px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95"
+                    className="px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
                   >
                     <UserPlus size={16} />
                     <span>Tambah Pemain Baru</span>

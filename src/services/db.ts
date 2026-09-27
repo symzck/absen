@@ -272,28 +272,36 @@ export const seedInitialDatabaseIfEmpty = async (
 ): Promise<{ seeded: boolean; message: string }> => {
   try {
     const studentSnapshot = await getDocs(collection(db, 'students'));
-    if (studentSnapshot.empty) {
-      console.log('[Firestore] Database students is empty. Seeding initial data...');
+    const existingIds = new Set<string>();
+    studentSnapshot.forEach(d => existingIds.add(d.id));
+
+    const missingStudents = initialStudents.filter(s => !existingIds.has(String(s.id)));
+
+    const userSnapshot = await getDocs(collection(db, 'system_users'));
+    const existingUserIds = new Set<string>();
+    userSnapshot.forEach(d => existingUserIds.add(d.id));
+    const missingUsers = initialUsers.filter(u => !existingUserIds.has(u.id));
+
+    if (missingStudents.length > 0 || missingUsers.length > 0) {
+      console.log(`[Firestore] Seeding missing data (${missingStudents.length} students, ${missingUsers.length} users)...`);
       notifyStatus('syncing');
       
-      // Batch seed students
       const batch = writeBatch(db);
-      initialStudents.forEach((student) => {
+      missingStudents.forEach((student) => {
         const ref = doc(db, 'students', String(student.id));
-        batch.set(ref, student);
+        batch.set(ref, student, { merge: true });
       });
       
-      // Batch seed initial users
-      initialUsers.forEach((user) => {
+      missingUsers.forEach((user) => {
         const ref = doc(db, 'system_users', user.id);
-        batch.set(ref, user);
+        batch.set(ref, user, { merge: true });
       });
 
       await batch.commit();
       notifyStatus('connected');
-      return { seeded: true, message: 'Data awal berhasil di-seed ke Cloud Firestore (absen-7862e).' };
+      return { seeded: true, message: `Data lengkap (${missingStudents.length} pemain) berhasil di-sinkronkan ke Cloud Firestore!` };
     }
-    return { seeded: false, message: 'Data sudah ada di cloud database.' };
+    return { seeded: false, message: 'Data sudah lengkap di cloud database.' };
   } catch (error: any) {
     console.warn('[Firestore] Error during seed check:', error);
     notifyStatus('error', error?.message || 'Koneksi Firestore gagal');
