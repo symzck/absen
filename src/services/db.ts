@@ -12,7 +12,8 @@ import {
 import { app } from './googleAuth';
 import { Student, DailyAttendance, SystemUser } from '../App';
 
-export const db = getFirestore(app);
+// In Google Cloud Firestore for project absen-7862e, the database ID is named 'default'
+export const db = getFirestore(app, 'default');
 
 export type SyncStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'connecting';
 
@@ -20,7 +21,7 @@ export type SyncStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'connec
 type SyncCallback = (status: SyncStatus, errorDetail?: string) => void;
 const syncListeners: Set<SyncCallback> = new Set();
 
-let currentSyncStatus: SyncStatus = 'offline';
+let currentSyncStatus: SyncStatus = 'connecting';
 let currentSyncError: string | undefined = undefined;
 
 export const getSyncStatus = () => ({ status: currentSyncStatus, error: currentSyncError });
