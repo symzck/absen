@@ -300,13 +300,25 @@ export default function App() {
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
         setStudents(remoteStudents);
+        localStorage.setItem('pgt_students', JSON.stringify(remoteStudents));
       }
     });
 
     // Real-time listener for attendances
     const unsubAttendances = subscribeAttendances((remoteAttendances) => {
-      if (remoteAttendances) {
-        setAttendances(remoteAttendances);
+      if (remoteAttendances && remoteAttendances.length > 0) {
+        setAttendances(prev => {
+          const merged = [...remoteAttendances];
+          prev.forEach(localSess => {
+            const exists = merged.some(r => r.id === localSess.id || r.date === localSess.date);
+            if (!exists) {
+              merged.push(localSess);
+            }
+          });
+          merged.sort((a, b) => b.date.localeCompare(a.date));
+          localStorage.setItem('pgt_attendances', JSON.stringify(merged));
+          return merged;
+        });
       }
     });
 
@@ -314,6 +326,7 @@ export default function App() {
     const unsubUsers = subscribeSystemUsers((remoteUsers) => {
       if (remoteUsers && remoteUsers.length > 0) {
         setSystemUsers(remoteUsers);
+        localStorage.setItem('pgt_system_users', JSON.stringify(remoteUsers));
       }
     });
 
@@ -324,6 +337,14 @@ export default function App() {
       unsubUsers();
     };
   }, []);
+
+  // Sync currentSessionName when selectedDate or attendances change
+  useEffect(() => {
+    const existing = attendances.find(a => a.date === selectedDate);
+    if (existing?.sessionName) {
+      setCurrentSessionName(existing.sessionName);
+    }
+  }, [selectedDate]);
 
   // Local Storage Synchronizations
   useEffect(() => {
@@ -550,79 +571,100 @@ export default function App() {
   // Attendance Handlers
   const handleSaveAttendance = (studentId: number, status: string, note: string) => {
     setAttendances(prev => {
-      let dateIndex = prev.findIndex(a => a.date === selectedDate);
-      let newData = [...prev];
-      let sessionObj: DailyAttendance | null = null;
+      const dateIndex = prev.findIndex(a => a.date === selectedDate);
+      let sessionObj: DailyAttendance;
+      let nextList: DailyAttendance[];
 
       if (dateIndex === -1) {
-        if (status) {
-          sessionObj = { 
-            id: `sesi-${selectedDate}`,
-            date: selectedDate, 
-            sessionName: currentSessionName || 'Latihan Rutin',
-            isSubmitted: false, // DRAFT by default until user submits
-            submittedAt: null,
-            submittedBy: null,
-            records: [{ studentId, status, note }] 
-          };
-          newData.push(sessionObj);
-        }
+        sessionObj = {
+          id: `sesi-${selectedDate}`,
+          date: selectedDate,
+          sessionName: currentSessionName || 'Latihan Rutin',
+          isSubmitted: false, // DRAFT by default until user submits
+          submittedAt: null,
+          submittedBy: null,
+          records: status ? [{ studentId, status, note }] : []
+        };
+        nextList = [...prev, sessionObj];
       } else {
-        let recordIndex = newData[dateIndex].records.findIndex(r => r.studentId === studentId);
+        const existingSession = prev[dateIndex];
+        const existingRecords = existingSession.records || [];
+        const recordIndex = existingRecords.findIndex(r => r.studentId === studentId);
+        let nextRecords: AttendanceRecord[];
+
         if (recordIndex === -1) {
-          if (status) {
-            newData[dateIndex].records.push({ studentId, status, note });
-          }
+          nextRecords = status ? [...existingRecords, { studentId, status, note }] : existingRecords;
         } else {
           if (!status) {
-            // Batalkan / hapus record absensi siswa ini
-            newData[dateIndex].records.splice(recordIndex, 1);
+            nextRecords = existingRecords.filter(r => r.studentId !== studentId);
           } else {
-            newData[dateIndex].records[recordIndex] = { studentId, status, note };
+            nextRecords = existingRecords.map(r => r.studentId === studentId ? { studentId, status, note } : r);
           }
         }
-        sessionObj = newData[dateIndex];
+
+        sessionObj = {
+          ...existingSession,
+          id: existingSession.id || `sesi-${selectedDate}`,
+          sessionName: currentSessionName || existingSession.sessionName || 'Latihan Rutin',
+          records: nextRecords
+        };
+
+        nextList = prev.map((s, idx) => idx === dateIndex ? sessionObj : s);
       }
 
-      if (sessionObj) {
-        saveAttendanceToCloud(sessionObj).catch(() => {});
-      }
-      return newData;
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      return nextList;
     });
   };
 
   const handleMarkAllPresent = () => {
     setAttendances(prev => {
-      let newData = [...prev];
-      let dateIndex = newData.findIndex(a => a.date === selectedDate);
-      
+      const dateIndex = prev.findIndex(a => a.date === selectedDate);
+      let sessionObj: DailyAttendance;
+      let nextList: DailyAttendance[];
+
       if (dateIndex === -1) {
-        newData.push({ 
+        const records = filteredStudents.map(student => ({
+          studentId: student.id,
+          status: 'Hadir',
+          note: ''
+        }));
+        sessionObj = {
           id: `sesi-${selectedDate}`,
-          date: selectedDate, 
+          date: selectedDate,
           sessionName: currentSessionName || 'Latihan Rutin',
           isSubmitted: false,
           submittedAt: null,
           submittedBy: null,
-          records: [] 
+          records
+        };
+        nextList = [...prev, sessionObj];
+      } else {
+        const existingSession = prev[dateIndex];
+        const existingRecords = existingSession.records || [];
+        const recordsMap = new Map(existingRecords.map(r => [r.studentId, r]));
+
+        filteredStudents.forEach(student => {
+          const rec = recordsMap.get(student.id);
+          recordsMap.set(student.id, {
+            studentId: student.id,
+            status: 'Hadir',
+            note: rec?.note || ''
+          });
         });
-        dateIndex = newData.length - 1;
+
+        sessionObj = {
+          ...existingSession,
+          id: existingSession.id || `sesi-${selectedDate}`,
+          sessionName: currentSessionName || existingSession.sessionName || 'Latihan Rutin',
+          records: Array.from(recordsMap.values())
+        };
+        nextList = prev.map((s, idx) => idx === dateIndex ? sessionObj : s);
       }
-      
-      const currentRecords = [...newData[dateIndex].records];
-      
-      filteredStudents.forEach(student => {
-        const existingRecordIndex = currentRecords.findIndex(r => r.studentId === student.id);
-        if (existingRecordIndex === -1) {
-          currentRecords.push({ studentId: student.id, status: 'Hadir', note: '' });
-        } else {
-          currentRecords[existingRecordIndex] = { ...currentRecords[existingRecordIndex], status: 'Hadir' };
-        }
-      });
-      
-      newData[dateIndex].records = currentRecords;
-      saveAttendanceToCloud(newData[dateIndex]).catch(() => {});
-      return newData;
+
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      saveAttendanceToCloud(sessionObj).catch(() => {});
+      return nextList;
     });
     triggerToast(`Semua anggota ${selectedSection === 'All' ? 'aktif' : selectedSection} ditandai Hadir!`);
   };
@@ -636,11 +678,62 @@ export default function App() {
     return attendances.find(a => a.date === selectedDate);
   }, [attendances, selectedDate]);
 
+  // Unified Save / Update Handler for Current Session
+  const handleSaveCurrentSession = async (asSubmitted?: boolean) => {
+    const existing = attendances.find(a => a.date === selectedDate);
+    const records = existing?.records || [];
+
+    if (records.length === 0 && asSubmitted) {
+      triggerToast('Belum ada data presensi yang diisi untuk sesi ini.', 'warning');
+      return;
+    }
+
+    const nowStr = new Date().toLocaleString('id-ID');
+    const officerName = currentUser?.fullName || 'Petugas Lapangan';
+    const isSub = asSubmitted !== undefined ? asSubmitted : (existing?.isSubmitted ?? false);
+
+    const sessionToSave: DailyAttendance = {
+      id: existing?.id || `sesi-${selectedDate}`,
+      date: selectedDate,
+      sessionName: currentSessionName || existing?.sessionName || 'Latihan Rutin',
+      isSubmitted: isSub,
+      submittedAt: isSub ? (existing?.submittedAt || nowStr) : null,
+      submittedBy: isSub ? (existing?.submittedBy || officerName) : null,
+      records: records
+    };
+
+    setAttendances(prev => {
+      const idx = prev.findIndex(a => a.date === selectedDate);
+      let nextList: DailyAttendance[];
+      if (idx === -1) {
+        nextList = [...prev, sessionToSave];
+      } else {
+        nextList = prev.map((s, i) => i === idx ? sessionToSave : s);
+      }
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      return nextList;
+    });
+
+    if (isSub) {
+      triggerToast(`Perubahan sesi presensi tanggal ${selectedDate} (${sessionToSave.sessionName}) berhasil disimpan!`);
+    } else {
+      triggerToast(`Draf presensi tanggal ${selectedDate} (${sessionToSave.sessionName}) berhasil disimpan!`);
+    }
+
+    // Persist session to Cloud Firestore
+    try {
+      await saveAttendanceToCloud(sessionToSave);
+    } catch (e: any) {
+      console.warn("Gagal simpan absensi ke cloud:", e);
+      triggerToast('Data presensi tersimpan di perangkat lokal.', 'warning');
+    }
+  };
+
   // Submit / Finalize attendance session
   const handleFinalizeSubmit = async () => {
     const currentRecords = currentSession?.records || [];
     if (currentRecords.length === 0) {
-      triggerToast('Belum ada data presensi yang diisi untuk sesi ini.');
+      triggerToast('Belum ada data presensi yang diisi untuk sesi ini.', 'warning');
       return;
     }
 
@@ -659,10 +752,14 @@ export default function App() {
 
     setAttendances(prev => {
       const idx = prev.findIndex(a => a.date === selectedDate);
-      if (idx === -1) return [...prev, sessionToSave];
-      const copy = [...prev];
-      copy[idx] = sessionToSave;
-      return copy;
+      let nextList: DailyAttendance[];
+      if (idx === -1) {
+        nextList = [...prev, sessionToSave];
+      } else {
+        nextList = prev.map((s, i) => i === idx ? sessionToSave : s);
+      }
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      return nextList;
     });
 
     setIsSubmitConfirmOpen(false);
@@ -673,6 +770,7 @@ export default function App() {
       await saveAttendanceToCloud(sessionToSave);
     } catch (e: any) {
       console.warn("Gagal simpan absensi ke cloud:", e);
+      triggerToast('Presensi tersimpan di lokal (Cloud belum tersinkron).', 'warning');
     }
 
     // Auto-sync to Google Sheets if configured
@@ -697,13 +795,17 @@ export default function App() {
 
   const handleRevertToDraft = (date: string) => {
     let revertedSession: DailyAttendance | null = null;
-    setAttendances(prev => prev.map(a => {
-      if (a.date === date) {
-        revertedSession = { ...a, isSubmitted: false };
-        return revertedSession;
-      }
-      return a;
-    }));
+    setAttendances(prev => {
+      const nextList = prev.map(a => {
+        if (a.date === date) {
+          revertedSession = { ...a, isSubmitted: false };
+          return revertedSession;
+        }
+        return a;
+      });
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      return nextList;
+    });
     triggerToast(`Sesi tanggal ${date} dikembalikan ke Draf (dikeluarkan dari rekapitulasi).`);
     if (revertedSession) {
       saveAttendanceToCloud(revertedSession).catch(() => {});
@@ -712,42 +814,62 @@ export default function App() {
 
   // Member editing handler
   const handleSaveEditedStudent = async (updated: Student) => {
-    setStudents(prev => prev.map(s => s.id === updated.id ? updated : s));
+    setStudents(prev => {
+      const next = prev.map(s => s.id === updated.id ? updated : s);
+      localStorage.setItem('pgt_students', JSON.stringify(next));
+      return next;
+    });
     setIsEditMemberModalOpen(false);
     setEditingStudent(null);
-    triggerToast(`Data pemain "${updated.name}" berhasil diperbarui & disimpan ke Cloud!`);
+    triggerToast(`Data pemain "${updated.name}" berhasil diperbarui & disimpan!`);
 
     // Persist to Cloud Firestore
     try {
       await saveStudentToCloud(updated);
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Gagal simpan edit member ke cloud:", e);
+      triggerToast('Data pemain tersimpan di lokal (Cloud belum tersinkron).', 'warning');
     }
   };
 
   // Sessions management handlers
   const handleUpdateSession = async (updatedSession: DailyAttendance) => {
+    const sId = updatedSession.id || `sesi-${updatedSession.date}`;
+    const cleanSession: DailyAttendance = {
+      ...updatedSession,
+      id: sId,
+      sessionName: updatedSession.sessionName || 'Latihan Rutin'
+    };
+
     setAttendances(prev => {
-      const idx = prev.findIndex(s => (s.id && s.id === updatedSession.id) || s.date === updatedSession.date);
+      const idx = prev.findIndex(s => (s.id && s.id === cleanSession.id) || s.date === cleanSession.date);
+      let nextList: DailyAttendance[];
       if (idx === -1) {
-        return [...prev, updatedSession];
+        nextList = [...prev, cleanSession];
+      } else {
+        nextList = prev.map((s, i) => i === idx ? cleanSession : s);
       }
-      const copy = [...prev];
-      copy[idx] = updatedSession;
-      return copy;
+      localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      return nextList;
     });
-    triggerToast(`Perubahan sesi tanggal ${updatedSession.date} berhasil disimpan!`);
+
+    triggerToast(`Perubahan sesi tanggal ${cleanSession.date} berhasil disimpan!`);
 
     // Persist to Cloud Firestore
     try {
-      await saveAttendanceToCloud(updatedSession);
-    } catch (e) {
+      await saveAttendanceToCloud(cleanSession);
+    } catch (e: any) {
       console.warn("Gagal simpan update sesi ke cloud:", e);
+      triggerToast('Perubahan tersimpan di lokal (Cloud belum tersinkron).', 'warning');
     }
   };
 
   const handleDeleteSession = async (sessionIdentifier: string) => {
-    setAttendances(prev => prev.filter(s => s.id !== sessionIdentifier && `sesi-${s.date}` !== sessionIdentifier));
+    setAttendances(prev => {
+      const next = prev.filter(s => s.id !== sessionIdentifier && `sesi-${s.date}` !== sessionIdentifier);
+      localStorage.setItem('pgt_attendances', JSON.stringify(next));
+      return next;
+    });
     triggerToast('Sesi absensi telah dihapus dari sistem & Cloud.');
 
     // Persist deletion to Cloud Firestore
@@ -851,11 +973,15 @@ export default function App() {
       asrama: newStudentAsrama,
       section: newStudentSection,
     };
-    setStudents(prev => [...prev, newStudent]);
+    setStudents(prev => {
+      const next = [...prev, newStudent];
+      localStorage.setItem('pgt_students', JSON.stringify(next));
+      return next;
+    });
     setNewStudentName('');
     setNewStudentKelas('');
     setIsAddMemberModalOpen(false);
-    triggerToast(`Pemain ${newStudent.name} berhasil ditambahkan & disimpan ke Cloud!`);
+    triggerToast(`Pemain ${newStudent.name} berhasil ditambahkan!`);
 
     // Persist to Cloud Firestore
     try {
@@ -867,7 +993,11 @@ export default function App() {
 
   const handleDeleteStudent = async (id: number, name: string) => {
     if (confirm(`Apakah Anda yakin ingin menghapus data anggota "${name}"?`)) {
-      setStudents(prev => prev.filter(s => s.id !== id));
+      setStudents(prev => {
+        const next = prev.filter(s => s.id !== id);
+        localStorage.setItem('pgt_students', JSON.stringify(next));
+        return next;
+      });
       triggerToast(`Data anggota "${name}" telah dihapus.`);
 
       // Persist deletion to Cloud Firestore
@@ -1393,7 +1523,7 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <button 
                     type="button"
-                    onClick={() => triggerToast('Draf presensi berhasil disimpan sementara.')}
+                    onClick={() => handleSaveCurrentSession(false)}
                     className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-colors cursor-pointer"
                   >
                     <Save size={15} />
@@ -1412,7 +1542,7 @@ export default function App() {
                   ) : (
                     <button 
                       type="button"
-                      onClick={() => triggerToast('Koreksi presensi tersimpan.')}
+                      onClick={() => handleSaveCurrentSession(true)}
                       className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
                     >
                       <Save size={15} />
@@ -2144,7 +2274,7 @@ export default function App() {
                 <div className="flex items-center gap-2.5">
                   <button 
                     type="button"
-                    onClick={() => triggerToast('Draf absensi tersimpan secara lokal!')}
+                    onClick={() => handleSaveCurrentSession(false)}
                     className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-colors cursor-pointer"
                   >
                     <Save size={15} />
@@ -2163,7 +2293,7 @@ export default function App() {
                   ) : (
                     <button 
                       type="button"
-                      onClick={() => triggerToast('Data absensi resmi berhasil diperbarui!')}
+                      onClick={() => handleSaveCurrentSession(true)}
                       className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
                     >
                       <Save size={15} />

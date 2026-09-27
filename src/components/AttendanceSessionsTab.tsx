@@ -97,9 +97,15 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
       const records = [...prev.records];
       const idx = records.findIndex(r => r.studentId === studentId);
       if (idx === -1) {
-        records.push({ studentId, status, note: '' });
+        if (status) {
+          records.push({ studentId, status, note: '' });
+        }
       } else {
-        records[idx] = { ...records[idx], status };
+        if (!status) {
+          records.splice(idx, 1);
+        } else {
+          records[idx] = { ...records[idx], status };
+        }
       }
       return { ...prev, records };
     });
