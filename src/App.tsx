@@ -5,13 +5,16 @@ import {
   Search, CheckSquare, Trophy, Shield, Sparkles, Filter, 
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
-  Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw
+  Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
+  Home, Megaphone, Plus, Pin
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
 import { GoogleSheetsTab } from './components/GoogleSheetsTab';
 import { AttendanceSessionsTab } from './components/AttendanceSessionsTab';
 import { ConfirmModal } from './components/ConfirmModal';
+import { HomeDashboardTab } from './components/HomeDashboardTab';
+import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -27,7 +30,11 @@ import {
   seedInitialDatabaseIfEmpty, 
   uploadAllLocalDataToCloud,
   onSyncStatusChange,
-  SyncStatus
+  SyncStatus,
+  Announcement,
+  subscribeAnnouncements,
+  saveAnnouncementToCloud,
+  deleteAnnouncementFromCloud
 } from './services/db';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -138,6 +145,42 @@ const INITIAL_USERS: SystemUser[] = [
   }
 ];
 
+export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: 'ann-1',
+    title: 'Gladi Bersih Lapangan Persiapan Konser & Apel Akbar',
+    content: 'Diberitahukan kepada seluruh anggota Korps Marching Band PGT Mu\'allimin bahwa jadwal latihan Sabtu sore akan dialokasikan penuh untuk Gladi Lapangan bersama instrumen lengkap. Harap hadir 15 menit sebelum waktu dimulai dengan membawa instrumen dan partitur masing-masing.',
+    category: 'schedule',
+    targetAudience: 'All',
+    author: 'Administrator Utama (Kepala Korps)',
+    authorRole: 'Super Admin',
+    createdAt: '2026-09-27',
+    pinned: true,
+  },
+  {
+    id: 'ann-2',
+    title: 'Pembersihan & Pengecekan Rutin Instrumen Brass & Pit',
+    content: 'Petugas section Brass dan Pit mohon memeriksa kondisi valve oil, slide grease, dan kelayakan mallet setelah sesi latihan hari ini. Laporkan jika ada instrumen yang memerlukan servis ke ruang peralatan.',
+    category: 'info',
+    targetAudience: 'Brass',
+    author: 'Administrator Utama',
+    authorRole: 'Super Admin',
+    createdAt: '2026-09-26',
+    pinned: false,
+  },
+  {
+    id: 'ann-3',
+    title: 'Apresiasi Disiplin Kehadiran Section Battery!',
+    content: 'Selamat kepada Section Battery yang mencatatkan persentase kehadiran tertinggi (96%) pada sesi latihan pekan ini. Pertahankan konsistensi dan kekompakan ketukan!',
+    category: 'praise',
+    targetAudience: 'Battery',
+    author: 'Kepala Pelatih Korps',
+    authorRole: 'Super Admin',
+    createdAt: '2026-09-25',
+    pinned: true,
+  }
+];
+
 const INITIAL_STUDENTS: Student[] = [
   // Section Brass (Daftar Atas)
   { id: 1, name: 'Rajendra Arya Abiyyu', kelas: '2H', asrama: 'C', section: 'Brass' },
@@ -204,11 +247,11 @@ export default function App() {
   });
 
   // Navigation Tab State
-  // Petugas: 'attendance' | 'my_history'
-  // Admin: 'admin_dashboard' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users'
-  type AdminTab = 'admin_dashboard' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users';
-  const [adminTab, setAdminTab] = useState<AdminTab>('admin_dashboard');
-  const [petugasTab, setPetugasTab] = useState<'attendance' | 'my_history'>('attendance');
+  // Petugas: 'attendance' | 'announcements' | 'my_history'
+  // Admin: 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users'
+  type AdminTab = 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users';
+  const [adminTab, setAdminTab] = useState<AdminTab>('home');
+  const [petugasTab, setPetugasTab] = useState<'attendance' | 'announcements' | 'my_history'>('attendance');
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -219,32 +262,48 @@ export default function App() {
   // Password visibility on login
   const [showLoginPassword, setShowLoginPassword] = useState(false);
 
-  // Student & Attendance Data with Auto-Recovery
+  // Helper for tracking explicitly deleted student IDs to guarantee they never reappear
+  const getDeletedStudentIds = (): Set<number> => {
+    try {
+      const saved = localStorage.getItem('pgt_deleted_student_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  };
+
+  // Student Data with Safe Non-resurrection Persistence
   const [students, setStudents] = useState<Student[]>(() => {
+    const deletedIds = getDeletedStudentIds();
     const saved = localStorage.getItem('pgt_students');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= INITIAL_STUDENTS.length) {
-          return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((s: Student) => s && s.id && !deletedIds.has(s.id));
         }
-        // If parsed array has fewer students than default, recover full roster while preserving any edits
-        const map = new Map<number, Student>();
-        INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
-        if (Array.isArray(parsed)) {
-          parsed.forEach((s: Student) => {
-            if (s && s.id) {
-              map.set(s.id, { ...map.get(s.id), ...s });
-            }
-          });
-        }
-        const recovered = Array.from(map.values()).sort((a, b) => a.id - b.id);
-        localStorage.setItem('pgt_students', JSON.stringify(recovered));
-        return recovered;
       } catch (e) {}
     }
-    return INITIAL_STUDENTS;
+    return INITIAL_STUDENTS.filter(s => !deletedIds.has(s.id));
   });
+
+  // Announcements State (Synced with localStorage and Cloud Firestore)
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
+    const saved = localStorage.getItem('pgt_announcements');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_ANNOUNCEMENTS;
+  });
+
+  // Member delete modal state
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
 
   const [attendances, setAttendances] = useState<DailyAttendance[]>(() => {
     const saved = localStorage.getItem('pgt_attendances');
@@ -317,20 +376,27 @@ export default function App() {
       console.warn('[Firestore] Seed check notice:', err);
     });
 
-    // Real-time listener for students (Safe Merge: never discard unedited members)
+    // Real-time listener for students (Safe Merge: never resurrect deleted members)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
+        const deletedIds = getDeletedStudentIds();
         setStudents(prev => {
           const map = new Map<number, Student>();
-          // Base: full 43 roster
-          INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
-          // Overlay current local state
+          // Base: full 43 roster (excluding deleted)
+          INITIAL_STUDENTS.forEach(s => {
+            if (!deletedIds.has(s.id)) map.set(s.id, s);
+          });
+          // Overlay current local state (excluding deleted)
           if (prev && prev.length > 0) {
-            prev.forEach(s => map.set(s.id, { ...map.get(s.id), ...s }));
+            prev.forEach(s => {
+              if (!deletedIds.has(s.id)) map.set(s.id, { ...map.get(s.id), ...s });
+            });
           }
-          // Overlay remote changes
+          // Overlay remote changes (excluding deleted)
           remoteStudents.forEach(remoteS => {
-            map.set(remoteS.id, { ...map.get(remoteS.id), ...remoteS });
+            if (!deletedIds.has(remoteS.id)) {
+              map.set(remoteS.id, { ...map.get(remoteS.id), ...remoteS });
+            }
           });
           const merged = Array.from(map.values()).sort((a, b) => a.id - b.id);
           localStorage.setItem('pgt_students', JSON.stringify(merged));
@@ -376,11 +442,35 @@ export default function App() {
       }
     });
 
+    // Real-time listener for announcements
+    const unsubAnnouncements = subscribeAnnouncements((remoteAnn) => {
+      if (remoteAnn && remoteAnn.length > 0) {
+        setAnnouncements(prev => {
+          const map = new Map<string, Announcement>();
+          INITIAL_ANNOUNCEMENTS.forEach(a => map.set(a.id, a));
+          if (prev && prev.length > 0) {
+            prev.forEach(a => map.set(a.id, { ...map.get(a.id), ...a }));
+          }
+          remoteAnn.forEach(ra => {
+            map.set(ra.id, { ...map.get(ra.id), ...ra });
+          });
+          const merged = Array.from(map.values()).sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return b.createdAt.localeCompare(a.createdAt);
+          });
+          localStorage.setItem('pgt_announcements', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+
     return () => {
       unsubStatus();
       unsubStudents();
       unsubAttendances();
       unsubUsers();
+      unsubAnnouncements();
     };
   }, []);
 
@@ -404,6 +494,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pgt_attendances', JSON.stringify(attendances));
   }, [attendances]);
+
+  useEffect(() => {
+    localStorage.setItem('pgt_announcements', JSON.stringify(announcements));
+  }, [announcements]);
 
   useEffect(() => {
     if (currentUser) {
@@ -1009,43 +1103,65 @@ export default function App() {
     triggerToast('Laporan absensi resmi berhasil diunduh (CSV/Excel)!');
   };
 
-  const handleRestoreDefaultStudents = async () => {
-    if (confirm('Apakah Anda ingin memulihkan seluruh 43 anggota pemain resmi ke database? Perubahan nama/kelas yang sudah Anda lakukan akan tetap dipertahankan.')) {
-      const map = new Map<number, Student>();
-      INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
-      students.forEach(s => {
-        map.set(s.id, { ...map.get(s.id), ...s });
-      });
-      const restored = Array.from(map.values()).sort((a, b) => a.id - b.id);
-      setStudents(restored);
-      localStorage.setItem('pgt_students', JSON.stringify(restored));
-      triggerToast(`Seluruh ${restored.length} pemain resmi berhasil dipulihkan!`);
-      
-      try {
-        await seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS);
-      } catch (e) {}
+  // Member & Student Management Handlers
+  const handleRestoreDefaultStudents = () => {
+    setIsRestoreModalOpen(true);
+  };
+
+  const executeRestoreDefaultStudents = async () => {
+    // Clear tracked deleted IDs
+    localStorage.removeItem('pgt_deleted_student_ids');
+
+    const map = new Map<number, Student>();
+    INITIAL_STUDENTS.forEach(s => map.set(s.id, s));
+    students.forEach(s => {
+      map.set(s.id, { ...map.get(s.id), ...s });
+    });
+    const restored = Array.from(map.values()).sort((a, b) => a.id - b.id);
+    setStudents(restored);
+    localStorage.setItem('pgt_students', JSON.stringify(restored));
+    triggerToast(`Seluruh ${restored.length} pemain resmi berhasil dipulihkan!`);
+    
+    try {
+      await seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS);
+    } catch (e) {
+      console.warn("Notice restoring database seed:", e);
     }
   };
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName.trim()) return;
+    if (!newStudentName.trim()) {
+      triggerToast('Nama pemain tidak boleh kosong!', 'warning');
+      return;
+    }
+
+    const newId = Date.now();
     const newStudent: Student = {
-      id: Date.now(),
+      id: newId,
       name: newStudentName.trim(),
       kelas: newStudentKelas.trim() || '1A',
-      asrama: newStudentAsrama,
-      section: newStudentSection,
+      asrama: newStudentAsrama || 'A',
+      section: newStudentSection || 'Brass',
     };
+
+    // Remove from deleted list if somehow matching ID
+    const deletedSet = getDeletedStudentIds();
+    if (deletedSet.has(newId)) {
+      deletedSet.delete(newId);
+      localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(deletedSet)));
+    }
+
     setStudents(prev => {
       const next = [...prev, newStudent];
       localStorage.setItem('pgt_students', JSON.stringify(next));
       return next;
     });
+
     setNewStudentName('');
     setNewStudentKelas('');
     setIsAddMemberModalOpen(false);
-    triggerToast(`Pemain ${newStudent.name} berhasil ditambahkan!`);
+    triggerToast(`Pemain "${newStudent.name}" berhasil ditambahkan ke database!`);
 
     // Persist to Cloud Firestore
     try {
@@ -1055,21 +1171,77 @@ export default function App() {
     }
   };
 
-  const handleDeleteStudent = async (id: number, name: string) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus data anggota "${name}"?`)) {
-      setStudents(prev => {
-        const next = prev.filter(s => s.id !== id);
-        localStorage.setItem('pgt_students', JSON.stringify(next));
-        return next;
-      });
-      triggerToast(`Data anggota "${name}" telah dihapus.`);
+  const handleDeleteStudent = (id: number, name: string) => {
+    const target = students.find(s => s.id === id) || { 
+      id, 
+      name, 
+      kelas: '', 
+      asrama: 'A', 
+      section: 'Brass' 
+    };
+    setStudentToDelete(target);
+  };
 
-      // Persist deletion to Cloud Firestore
-      try {
-        await deleteStudentFromCloud(id);
-      } catch (e) {
-        console.warn("Gagal hapus anggota di cloud:", e);
-      }
+  const handleConfirmDeleteStudent = async () => {
+    if (!studentToDelete) return;
+    const { id, name } = studentToDelete;
+    setStudentToDelete(null);
+
+    // 1. Permanently record ID in deleted set so real-time sync never resurrects it
+    const deletedSet = getDeletedStudentIds();
+    deletedSet.add(id);
+    localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(deletedSet)));
+
+    // 2. Remove student from active state & local storage
+    setStudents(prev => {
+      const next = prev.filter(s => s.id !== id);
+      localStorage.setItem('pgt_students', JSON.stringify(next));
+      return next;
+    });
+
+    triggerToast(`Data anggota "${name}" berhasil dihapus.`);
+
+    // 3. Persist deletion to Cloud Firestore
+    try {
+      await deleteStudentFromCloud(id);
+    } catch (e) {
+      console.warn("Gagal hapus anggota di cloud:", e);
+    }
+  };
+
+  // Announcements Handlers
+  const handleSaveAnnouncement = async (item: Announcement) => {
+    setAnnouncements(prev => {
+      const next = prev.some(a => a.id === item.id)
+        ? prev.map(a => a.id === item.id ? item : a)
+        : [item, ...prev];
+      next.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+      localStorage.setItem('pgt_announcements', JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      await saveAnnouncementToCloud(item);
+    } catch (e) {
+      console.warn("Gagal simpan pengumuman ke cloud:", e);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    setAnnouncements(prev => {
+      const next = prev.filter(a => a.id !== id);
+      localStorage.setItem('pgt_announcements', JSON.stringify(next));
+      return next;
+    });
+
+    try {
+      await deleteAnnouncementFromCloud(id);
+    } catch (e) {
+      console.warn("Gagal hapus pengumuman di cloud:", e);
     }
   };
 

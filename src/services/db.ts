@@ -291,7 +291,104 @@ export const deleteUserFromCloud = async (userId: string): Promise<void> => {
 };
 
 // ---------------------------------------------------------------------------
-// 4. AUTO-SEED DATABASE IF EMPTY (INITIAL MIGRATION)
+// 4. ANNOUNCEMENTS / PAPAN PENGUMUMAN & INFORMASI ADMIN
+// ---------------------------------------------------------------------------
+
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  category: 'urgent' | 'info' | 'schedule' | 'praise';
+  targetAudience: 'All' | 'Brass' | 'Cologuard' | 'Battery' | 'Pit';
+  author: string;
+  authorRole: string;
+  createdAt: string;
+  pinned?: boolean;
+}
+
+export const subscribeAnnouncements = (
+  onData: (announcements: Announcement[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe => {
+  const colRef = collection(db, 'announcements');
+
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      notifyStatus('connected');
+      if (!snapshot.empty) {
+        const list: Announcement[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data() as Announcement;
+          list.push({
+            id: data.id || d.id,
+            title: data.title || '',
+            content: data.content || '',
+            category: data.category || 'info',
+            targetAudience: data.targetAudience || 'All',
+            author: data.author || 'Admin PGT',
+            authorRole: data.authorRole || 'Administrator',
+            createdAt: data.createdAt || new Date().toISOString().split('T')[0],
+            pinned: Boolean(data.pinned)
+          });
+        });
+        // Sort: pinned first, then by date descending
+        list.sort((a, b) => {
+          if (a.pinned && !b.pinned) return -1;
+          if (!a.pinned && b.pinned) return 1;
+          return b.createdAt.localeCompare(a.createdAt);
+        });
+        onData(list);
+      }
+    },
+    (error) => {
+      console.warn('[Firestore] Announcements subscription notice:', error.message);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const saveAnnouncementToCloud = async (announcement: Announcement): Promise<void> => {
+  notifyStatus('syncing');
+  try {
+    const docRef = doc(db, 'announcements', announcement.id);
+    await withTimeout(
+      setDoc(docRef, {
+        id: announcement.id,
+        title: announcement.title,
+        content: announcement.content,
+        category: announcement.category,
+        targetAudience: announcement.targetAudience,
+        author: announcement.author,
+        authorRole: announcement.authorRole,
+        createdAt: announcement.createdAt,
+        pinned: Boolean(announcement.pinned),
+        updatedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
+    notifyStatus('connected');
+  } catch (error: any) {
+    console.warn('[Firestore] Notice saving announcement to cloud:', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+  }
+};
+
+export const deleteAnnouncementFromCloud = async (announcementId: string): Promise<void> => {
+  notifyStatus('syncing');
+  try {
+    const docRef = doc(db, 'announcements', announcementId);
+    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+    notifyStatus('connected');
+  } catch (error: any) {
+    console.warn('[Firestore] Notice deleting announcement from cloud:', error?.message);
+    notifyStatus('offline', error?.message);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 5. AUTO-SEED DATABASE IF EMPTY (INITIAL MIGRATION)
 // ---------------------------------------------------------------------------
 
 export const seedInitialDatabaseIfEmpty = async (
