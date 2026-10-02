@@ -250,8 +250,9 @@ export default function App() {
   // Petugas: 'attendance' | 'announcements' | 'my_history'
   // Admin: 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users'
   type AdminTab = 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users';
+  type PetugasTab = 'attendance' | 'announcements' | 'sessions' | 'recap' | 'members' | 'my_history';
   const [adminTab, setAdminTab] = useState<AdminTab>('home');
-  const [petugasTab, setPetugasTab] = useState<'attendance' | 'announcements' | 'my_history'>('attendance');
+  const [petugasTab, setPetugasTab] = useState<PetugasTab>('attendance');
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -1491,17 +1492,19 @@ export default function App() {
           <div className="flex items-center justify-between bg-slate-900 p-2 rounded-2xl border border-slate-800">
             <div className="flex items-center gap-1 overflow-x-auto">
               <button
+                type="button"
                 onClick={() => setPetugasTab('attendance')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <ClipboardList size={15} />
+                <ClipboardList size={14} />
                 <span>Input Presensi</span>
               </button>
               <button
+                type="button"
                 onClick={() => setPetugasTab('announcements')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'announcements' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'announcements' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <Megaphone size={15} />
+                <Megaphone size={14} />
                 <span>Pengumuman</span>
                 {announcements.length > 0 && (
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold font-mono">
@@ -1510,10 +1513,35 @@ export default function App() {
                 )}
               </button>
               <button
-                onClick={() => setPetugasTab('my_history')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'my_history' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                type="button"
+                onClick={() => setPetugasTab('sessions')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'sessions' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <BarChart3 size={15} />
+                <Edit3 size={14} />
+                <span>Kelola & Submit Sesi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPetugasTab('recap')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'recap' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <BarChart3 size={14} />
+                <span>Rekap & Leaderboard</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPetugasTab('members')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'members' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Users size={14} />
+                <span>Database Pemain</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPetugasTab('my_history')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'my_history' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Clock size={14} />
                 <span>Ringkasan Sesi</span>
               </button>
             </div>
@@ -1813,6 +1841,83 @@ export default function App() {
                 onDeleteAnnouncement={handleDeleteAnnouncement}
                 triggerToast={triggerToast}
               />
+            </div>
+          )}
+
+          {petugasTab === 'sessions' && (
+            <AttendanceSessionsTab
+              sessions={attendances}
+              students={students}
+              currentUserName={currentUser?.fullName || 'Petugas Lapangan'}
+              onUpdateSession={handleUpdateSession}
+              onDeleteSession={handleDeleteSession}
+              onSubmitSession={(sessionId) => {
+                const sess = attendances.find(s => s.id === sessionId || `sesi-${s.date}` === sessionId);
+                if (sess) {
+                  setSelectedDate(sess.date);
+                  setCurrentSessionName(sess.sessionName || 'Latihan Rutin');
+                  setIsSubmitConfirmOpen(true);
+                }
+              }}
+              triggerToast={triggerToast}
+            />
+          )}
+
+          {petugasTab === 'recap' && (
+            <div className="space-y-6 pb-20">
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-white">Leaderboard & Rekap Disiplin Section</h2>
+                    <p className="text-xs text-slate-400 mt-1">Persentase kehadiran berdasarkan sesi yang telah disubmit resmi.</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={exportToExcel}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg"
+                  >
+                    <Download size={15} />
+                    <span>Export Rekap (CSV)</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {sectionLeaderboard.map((board, index) => (
+                    <div key={board.section} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="text-xs text-slate-400 font-bold">#{index + 1} Section {board.section}</div>
+                      <div className="text-2xl font-black text-amber-300">{board.average}%</div>
+                      <div className="text-[11px] text-slate-500">{board.members} Anggota terdata</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {petugasTab === 'members' && (
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-extrabold text-white">Master Data Pemain ({students.length} Anggota)</h2>
+                <button 
+                  type="button"
+                  onClick={() => setIsAddMemberModalOpen(true)}
+                  className="px-3.5 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
+                >
+                  <UserPlus size={14} />
+                  <span>Tambah Pemain</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {students.map(s => (
+                  <div key={s.id} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-white text-sm">{s.name}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Section <strong className="text-amber-400">{s.section}</strong> · Kelas {s.kelas} · Asrama {s.asrama}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
