@@ -397,35 +397,34 @@ export const seedInitialDatabaseIfEmpty = async (
 ): Promise<{ seeded: boolean; message: string }> => {
   try {
     const studentSnapshot = await withTimeout(getDocs(collection(db, 'students')), 3000, 'Cloud timeout');
-    const existingIds = new Set<string>();
-    studentSnapshot.forEach(d => existingIds.add(d.id));
-
-    const missingStudents = initialStudents.filter(s => !existingIds.has(String(s.id)));
-
     const userSnapshot = await withTimeout(getDocs(collection(db, 'system_users')), 3000, 'Cloud timeout');
-    const existingUserIds = new Set<string>();
-    userSnapshot.forEach(d => existingUserIds.add(d.id));
-    const missingUsers = initialUsers.filter(u => !existingUserIds.has(u.id));
 
-    if (missingStudents.length > 0 || missingUsers.length > 0) {
+    const shouldSeedStudents = studentSnapshot.empty;
+    const shouldSeedUsers = userSnapshot.empty;
+
+    if (shouldSeedStudents || shouldSeedUsers) {
       notifyStatus('syncing');
       
       const batch = writeBatch(db);
-      missingStudents.forEach((student) => {
-        const ref = doc(db, 'students', String(student.id));
-        batch.set(ref, student, { merge: true });
-      });
+      if (shouldSeedStudents) {
+        initialStudents.forEach((student) => {
+          const ref = doc(db, 'students', String(student.id));
+          batch.set(ref, student, { merge: true });
+        });
+      }
       
-      missingUsers.forEach((user) => {
-        const ref = doc(db, 'system_users', user.id);
-        batch.set(ref, user, { merge: true });
-      });
+      if (shouldSeedUsers) {
+        initialUsers.forEach((user) => {
+          const ref = doc(db, 'system_users', user.id);
+          batch.set(ref, user, { merge: true });
+        });
+      }
 
       await withTimeout(batch.commit(), 3500, 'Cloud timeout');
       notifyStatus('connected');
-      return { seeded: true, message: `Data lengkap (${missingStudents.length} pemain) berhasil di-sinkronkan ke Cloud Firestore!` };
+      return { seeded: true, message: `Inisialisasi database awal berhasil di-sinkronkan ke Cloud Firestore!` };
     }
-    return { seeded: false, message: 'Data sudah lengkap di cloud database.' };
+    return { seeded: false, message: 'Data sudah tersedia di cloud database.' };
   } catch (error: any) {
     console.warn('[Firestore] Seed check notice (operating in local mode):', error?.message);
     notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console. Data aman di perangkat lokal.');

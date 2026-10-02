@@ -256,7 +256,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
   const [toastMessage, setToastMessage] = useState('Aksi berhasil disimpan.');
-  const [toastType, setToastType] = useState<'success' | 'error' | 'warning'>('success');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'warning' | 'info'>('success');
   const [loginError, setLoginError] = useState('');
 
   // Password visibility on login
@@ -376,28 +376,26 @@ export default function App() {
       console.warn('[Firestore] Seed check notice:', err);
     });
 
-    // Real-time listener for students (Safe Merge: never resurrect deleted members)
+    // Real-time listener for students (Authoritative Cloud Sync: respects deletions and local-only additions)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
         const deletedIds = getDeletedStudentIds();
         setStudents(prev => {
           const map = new Map<number, Student>();
-          // Base: full 43 roster (excluding deleted)
-          INITIAL_STUDENTS.forEach(s => {
-            if (!deletedIds.has(s.id)) map.set(s.id, s);
-          });
-          // Overlay current local state (excluding deleted)
-          if (prev && prev.length > 0) {
-            prev.forEach(s => {
-              if (!deletedIds.has(s.id)) map.set(s.id, { ...map.get(s.id), ...s });
-            });
-          }
-          // Overlay remote changes (excluding deleted)
+          // 1. Authoritative active students from cloud Firestore
           remoteStudents.forEach(remoteS => {
             if (!deletedIds.has(remoteS.id)) {
-              map.set(remoteS.id, { ...map.get(remoteS.id), ...remoteS });
+              map.set(remoteS.id, remoteS);
             }
           });
+          // 2. Preserve any local additions that haven't synced to cloud yet
+          if (prev && prev.length > 0) {
+            prev.forEach(s => {
+              if (!deletedIds.has(s.id) && !map.has(s.id)) {
+                map.set(s.id, s);
+              }
+            });
+          }
           const merged = Array.from(map.values()).sort((a, b) => a.id - b.id);
           localStorage.setItem('pgt_students', JSON.stringify(merged));
           return merged;
@@ -514,7 +512,7 @@ export default function App() {
     }
   }, [currentUser]);
 
-  const triggerToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
+  const triggerToast = (msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'success') => {
     const isError = type === 'error' || msg.toLowerCase().startsWith('error') || msg.toLowerCase().includes('gagal');
     setToastType(isError ? 'error' : type);
     setToastMessage(msg);
@@ -539,7 +537,7 @@ export default function App() {
       setCurrentUser(matchedUser);
       setLoginError('');
       if (matchedUser.role === 'admin') {
-        setAdminTab('admin_dashboard');
+        setAdminTab('home');
         triggerToast(`Selamat datang, Administrator (${matchedUser.fullName})!`);
       } else {
         setPetugasTab('attendance');
@@ -1109,6 +1107,7 @@ export default function App() {
   };
 
   const executeRestoreDefaultStudents = async () => {
+    setIsRestoreModalOpen(false);
     // Clear tracked deleted IDs
     localStorage.removeItem('pgt_deleted_student_ids');
 
@@ -1120,10 +1119,12 @@ export default function App() {
     const restored = Array.from(map.values()).sort((a, b) => a.id - b.id);
     setStudents(restored);
     localStorage.setItem('pgt_students', JSON.stringify(restored));
-    triggerToast(`Seluruh ${restored.length} pemain resmi berhasil dipulihkan!`);
+    triggerToast(`Seluruh 43 pemain resmi PGT Mu'allimin berhasil dipulihkan!`);
     
     try {
-      await seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS);
+      for (const s of INITIAL_STUDENTS) {
+        saveStudentToCloud(s).catch(() => {});
+      }
     } catch (e) {
       console.warn("Notice restoring database seed:", e);
     }
@@ -1131,7 +1132,8 @@ export default function App() {
 
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newStudentName.trim()) {
+    const cleanName = newStudentName.trim();
+    if (!cleanName) {
       triggerToast('Nama pemain tidak boleh kosong!', 'warning');
       return;
     }
@@ -1139,7 +1141,7 @@ export default function App() {
     const newId = Date.now();
     const newStudent: Student = {
       id: newId,
-      name: newStudentName.trim(),
+      name: cleanName,
       kelas: newStudentKelas.trim() || '1A',
       asrama: newStudentAsrama || 'A',
       section: newStudentSection || 'Brass',
@@ -1153,7 +1155,7 @@ export default function App() {
     }
 
     setStudents(prev => {
-      const next = [...prev, newStudent];
+      const next = [...prev, newStudent].sort((a, b) => a.id - b.id);
       localStorage.setItem('pgt_students', JSON.stringify(next));
       return next;
     });
@@ -1161,7 +1163,7 @@ export default function App() {
     setNewStudentName('');
     setNewStudentKelas('');
     setIsAddMemberModalOpen(false);
-    triggerToast(`Pemain "${newStudent.name}" berhasil ditambahkan ke database!`);
+    triggerToast(`Pemain "${newStudent.name}" (${newStudent.section}) berhasil ditambahkan ke database!`);
 
     // Persist to Cloud Firestore
     try {
@@ -1487,17 +1489,29 @@ export default function App() {
           
           {/* Officer Navigation Pills */}
           <div className="flex items-center justify-between bg-slate-900 p-2 rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 overflow-x-auto">
               <button
                 onClick={() => setPetugasTab('attendance')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <ClipboardList size={15} />
-                <span>Input Presensi Hari Ini</span>
+                <span>Input Presensi</span>
+              </button>
+              <button
+                onClick={() => setPetugasTab('announcements')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'announcements' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Megaphone size={15} />
+                <span>Pengumuman</span>
+                {announcements.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold font-mono">
+                    {announcements.length}
+                  </span>
+                )}
               </button>
               <button
                 onClick={() => setPetugasTab('my_history')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${petugasTab === 'my_history' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap ${petugasTab === 'my_history' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <BarChart3 size={15} />
                 <span>Ringkasan Sesi</span>
@@ -1790,6 +1804,18 @@ export default function App() {
             </div>
           )}
 
+          {petugasTab === 'announcements' && (
+            <div className="space-y-4">
+              <AnnouncementsTab
+                announcements={announcements}
+                currentUser={currentUser}
+                onSaveAnnouncement={handleSaveAnnouncement}
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+                triggerToast={triggerToast}
+              />
+            </div>
+          )}
+
           {petugasTab === 'my_history' && (
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
               <h2 className="text-lg font-bold text-white">Ringkasan Kehadiran Sesi Hari Ini</h2>
@@ -1861,9 +1887,9 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row antialiased selection:bg-purple-500 selection:text-white">
       
       {/* Mobile Top Bar */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 text-white p-3.5 flex justify-between items-center shadow-lg sticky top-0 z-30">
+      <div className="md:hidden bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white p-3.5 flex justify-between items-center shadow-xl sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/40 bg-black flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/40 bg-black flex items-center justify-center shrink-0 shadow-md">
             <img 
               src={OFFICIAL_LOGO_URL} 
               alt="Logo PGT" 
@@ -1873,19 +1899,224 @@ export default function App() {
           </div>
           <div>
             <div className="font-extrabold text-sm text-white leading-tight">ADMIN PGT MU'ALLIMIN</div>
-            <div className="text-[11px] text-amber-400">Pusat Kontrol Utama</div>
+            <div className="text-[11px] text-amber-400 font-semibold flex items-center gap-1">
+              <span>Pusat Kontrol</span>
+              <span>·</span>
+              <span className="text-purple-300 capitalize">
+                {adminTab === 'home' ? 'Beranda' : adminTab === 'announcements' ? 'Pengumuman' : adminTab === 'admin_dashboard' ? 'Presensi' : adminTab.replace('_', ' ')}
+              </span>
+            </div>
           </div>
         </div>
         <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-200"
+          className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+          title="Buka / Tutup Menu Navigasi"
         >
-          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+          <span>{isMobileMenuOpen ? 'Tutup' : 'Menu'}</span>
         </button>
       </div>
 
-      {/* Admin Sidebar Navigation */}
-      <aside className={`${isMobileMenuOpen ? 'block' : 'hidden'} md:flex flex-col w-full md:w-72 bg-slate-900/95 border-r border-slate-800 text-slate-200 flex-shrink-0 z-20 md:sticky md:top-0 md:h-screen transition-all absolute md:relative shadow-2xl`}>
+      {/* Floating Follow-Along Menu Button on Mobile for persistent access when scrolling */}
+      <div className="fixed bottom-5 right-4 z-40 md:hidden pointer-events-auto">
+        <button 
+          type="button"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="px-3.5 py-2.5 bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-600 hover:from-purple-600 hover:to-indigo-500 text-white rounded-full shadow-2xl border-2 border-purple-400/60 active:scale-90 transition-all flex items-center gap-1.5 text-xs font-black cursor-pointer backdrop-blur-sm"
+          title="Buka / Tutup Menu"
+        >
+          {isMobileMenuOpen ? <X size={17} /> : <Menu size={17} />}
+          <span className="pr-1">{isMobileMenuOpen ? 'Tutup' : 'Menu'}</span>
+        </button>
+      </div>
+
+      {/* Mobile Drawer Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 z-50 md:hidden bg-black/80 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setIsMobileMenuOpen(false)}
+        >
+          <aside 
+            className="w-4/5 max-w-xs h-full bg-slate-900 border-r border-slate-800 text-slate-200 flex flex-col shadow-2xl p-4 overflow-y-auto animate-in slide-in-from-left duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-3 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/40 bg-black p-0.5 flex items-center justify-center shrink-0">
+                  <img 
+                    src={OFFICIAL_LOGO_URL} 
+                    alt="Logo" 
+                    className="w-full h-full object-contain"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/logo.png"; }}
+                  />
+                </div>
+                <div>
+                  <div className="font-black text-sm text-white leading-tight">PGT MU'ALLIMIN</div>
+                  <div className="text-[10px] text-amber-400 font-bold">SUPER ADMINISTRATOR</div>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <nav className="flex-1 mt-3 space-y-1.5 overflow-y-auto">
+              <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Navigasi Utama</div>
+
+              <button 
+                onClick={() => { setAdminTab('home'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'home' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Home size={18} className={adminTab === 'home' ? 'text-amber-400' : 'text-purple-400'} />
+                  <span>Beranda Utama</span>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-300 border border-purple-700/50">
+                  Home
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'admin_dashboard' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <ClipboardList size={18} className={adminTab === 'admin_dashboard' ? 'text-amber-400' : 'text-slate-400'} />
+                  <span>Presensi Seluruh Sesi</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 tabular-nums">
+                  {filteredStudents.length}
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('announcements'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'announcements' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Megaphone size={18} className={adminTab === 'announcements' ? 'text-amber-400' : 'text-amber-400/80'} />
+                  <span>Papan Pengumuman</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold tabular-nums">
+                  {announcements.length}
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'edit_absensi' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Edit3 size={18} className={adminTab === 'edit_absensi' ? 'text-amber-400' : 'text-slate-400'} />
+                  <span>Edit Data Absen</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-purple-300 tabular-nums font-bold">
+                  {attendances.length} Sesi
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('recap'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'recap' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <BarChart3 size={18} className={adminTab === 'recap' ? 'text-amber-400' : 'text-slate-400'} />
+                  <span>Rekap & Leaderboard</span>
+                </div>
+                <Trophy size={14} className="text-amber-400" />
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'google_sheets' 
+                    ? 'bg-gradient-to-r from-emerald-800/90 to-teal-900 text-white font-bold border border-emerald-500/40 shadow-md' 
+                    : 'text-emerald-300/80 hover:bg-slate-800/60 hover:text-emerald-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet size={18} className="text-emerald-400" />
+                  <span>Google Sheets Sync</span>
+                </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                  Sheets
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'manage_users' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <UserCheck size={18} className={adminTab === 'manage_users' ? 'text-amber-400' : 'text-slate-400'} />
+                  <span>Kelola User & Petugas</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold tabular-nums">
+                  {systemUsers.length} User
+                </span>
+              </button>
+
+              <button 
+                onClick={() => { setAdminTab('members'); setIsMobileMenuOpen(false); }}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+                  adminTab === 'members' 
+                    ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Users size={18} className={adminTab === 'members' ? 'text-amber-400' : 'text-slate-400'} />
+                  <span>Database Pemain</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 tabular-nums">
+                  {students.length}
+                </span>
+              </button>
+            </nav>
+
+            <div className="pt-3 border-t border-slate-800 space-y-2">
+              <button
+                onClick={handleLogout}
+                className="w-full py-2.5 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-800/50 text-red-300 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <LogOut size={14} />
+                <span>Keluar dari Admin</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop Admin Sidebar Navigation */}
+      <aside className="hidden md:flex flex-col w-72 bg-slate-900/95 border-r border-slate-800 text-slate-200 flex-shrink-0 z-20 sticky top-0 h-screen shadow-2xl">
         {/* Brand Banner */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1947,8 +2178,25 @@ export default function App() {
           <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Menu Administrator</div>
           
           <button 
+            onClick={() => { setAdminTab('home'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+              adminTab === 'home' 
+                ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Home size={18} className={adminTab === 'home' ? 'text-amber-400' : 'text-purple-400'} />
+              <span>Beranda Utama</span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-900/60 text-purple-300 border border-purple-700/50">
+              Home
+            </span>
+          </button>
+
+          <button 
             onClick={() => { setAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'admin_dashboard' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
                 : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -1964,8 +2212,25 @@ export default function App() {
           </button>
 
           <button 
+            onClick={() => { setAdminTab('announcements'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+              adminTab === 'announcements' 
+                ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
+                : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Megaphone size={18} className={adminTab === 'announcements' ? 'text-amber-400' : 'text-amber-400/80'} />
+              <span>Papan Pengumuman</span>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold tabular-nums">
+              {announcements.length}
+            </span>
+          </button>
+
+          <button 
             onClick={() => { setAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'edit_absensi' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
                 : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -1982,7 +2247,7 @@ export default function App() {
 
           <button 
             onClick={() => { setAdminTab('recap'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'recap' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
                 : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -1997,7 +2262,7 @@ export default function App() {
 
           <button 
             onClick={() => { setAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'google_sheets' 
                 ? 'bg-gradient-to-r from-emerald-800/90 to-teal-900 text-white font-bold border border-emerald-500/40 shadow-md' 
                 : 'text-emerald-300/80 hover:bg-slate-800/60 hover:text-emerald-200'
@@ -2014,7 +2279,7 @@ export default function App() {
 
           <button 
             onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'manage_users' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
                 : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -2031,7 +2296,7 @@ export default function App() {
 
           <button 
             onClick={() => { setAdminTab('members'); setIsMobileMenuOpen(false); }}
-            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all ${
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'members' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
                 : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
@@ -2159,6 +2424,23 @@ export default function App() {
         )}
 
         <div className="p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+
+          {/* TAB 0: BERANDA / HOME DASHBOARD */}
+          {adminTab === 'home' && (
+            <HomeDashboardTab
+              currentUser={currentUser}
+              students={students}
+              attendances={attendances}
+              announcements={announcements}
+              selectedDate={selectedDate}
+              currentSessionName={currentSessionName}
+              onNavigateTab={(tab) => setAdminTab(tab as AdminTab)}
+              onSelectAnnouncement={() => setAdminTab('announcements')}
+              onOpenAddMember={() => setIsAddMemberModalOpen(true)}
+              onOpenAddAnnouncement={() => setAdminTab('announcements')}
+              triggerToast={triggerToast}
+            />
+          )}
 
           {/* TAB 1: ADMIN PRESENSI DASHBOARD */}
           {adminTab === 'admin_dashboard' && (
@@ -2547,6 +2829,19 @@ export default function App() {
             </div>
           )}
 
+          {/* TAB: PAPAN PENGUMUMAN & INFORMASI ADMIN */}
+          {adminTab === 'announcements' && (
+            <div className="space-y-6 pb-20 md:pb-6">
+              <AnnouncementsTab
+                announcements={announcements}
+                currentUser={currentUser}
+                onSaveAnnouncement={handleSaveAnnouncement}
+                onDeleteAnnouncement={handleDeleteAnnouncement}
+                triggerToast={triggerToast}
+              />
+            </div>
+          )}
+
           {/* TAB 2: REKAPITULASI & LEADERBOARD */}
           {adminTab === 'recap' && (
             <div className="space-y-6 pb-20 md:pb-6">
@@ -2891,10 +3186,62 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Member Search & Section Filter */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-lg">
+                <div className="relative flex-1 max-w-md">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama pemain, kelas (mis: 2F), atau asrama..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  {searchQuery && (
+                    <button 
+                      type="button"
+                      onClick={() => setSearchQuery('')} 
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  {sections.map(sec => {
+                    const count = sec === 'All' ? students.length : students.filter(s => s.section === sec).length;
+                    return (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => setSelectedSection(sec)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                          selectedSection === sec
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'bg-slate-950 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                        }`}
+                      >
+                        {sec === 'All' ? 'Semua Section' : sec} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Members Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {students
-                  .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.section.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .filter(s => {
+                    const matchSec = selectedSection === 'All' || s.section === selectedSection;
+                    const query = searchQuery.toLowerCase().trim();
+                    const matchQuery = !query || 
+                      s.name.toLowerCase().includes(query) || 
+                      s.section.toLowerCase().includes(query) ||
+                      s.kelas.toLowerCase().includes(query) ||
+                      s.asrama.toLowerCase().includes(query);
+                    return matchSec && matchQuery;
+                  })
                   .map(s => (
                     <div 
                       key={s.id}
@@ -2936,6 +3283,25 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+
+                {students.filter(s => {
+                  const matchSec = selectedSection === 'All' || s.section === selectedSection;
+                  const query = searchQuery.toLowerCase().trim();
+                  return matchSec && (!query || s.name.toLowerCase().includes(query) || s.section.toLowerCase().includes(query) || s.kelas.toLowerCase().includes(query) || s.asrama.toLowerCase().includes(query));
+                }).length === 0 && (
+                  <div className="col-span-full bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-3">
+                    <Users size={36} className="mx-auto text-slate-600" />
+                    <div className="font-bold text-slate-300 text-sm">Tidak ada pemain yang cocok dengan pencarian</div>
+                    <p className="text-xs text-slate-500">Coba periksa ejaan nama pemain atau ganti filter section di atas.</p>
+                    <button 
+                      type="button"
+                      onClick={() => { setSearchQuery(''); setSelectedSection('All'); }} 
+                      className="px-4 py-2 rounded-xl bg-purple-950/60 hover:bg-purple-900/80 border border-purple-800/50 text-purple-300 text-xs font-bold transition-all cursor-pointer"
+                    >
+                      Reset Filter Pencarian
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3324,6 +3690,41 @@ export default function App() {
         cancelText="Batal (Tetap Simpan sebagai Draf)"
         onConfirm={handleFinalizeSubmit}
         onCancel={() => setIsSubmitConfirmOpen(false)}
+      />
+
+      {/* MODAL: CONFIRM DELETE MEMBER / STUDENT */}
+      <ConfirmModal
+        isOpen={Boolean(studentToDelete)}
+        title="Konfirmasi Hapus Data Pemain"
+        message={`Apakah Anda yakin ingin menghapus "${studentToDelete?.name}" dari daftar pemain marching band?`}
+        details={[
+          `Nama Pemain: ${studentToDelete?.name}`,
+          `Section Instrumen: ${studentToDelete?.section}`,
+          `Kelas: ${studentToDelete?.kelas} · Asrama: ${studentToDelete?.asrama}`,
+          'Pemain ini akan dihapus dari daftar master dan sesi presensi berikutnya.',
+          'Catatan: 43 pemain resmi bawaan dapat dipulihkan sewaktu-waktu melalui tombol "Pulihkan 43 Anggota".'
+        ]}
+        confirmText="Ya, Hapus Pemain"
+        cancelText="Batal"
+        isDanger={true}
+        onConfirm={handleConfirmDeleteStudent}
+        onCancel={() => setStudentToDelete(null)}
+      />
+
+      {/* MODAL: CONFIRM RESTORE 43 DEFAULT STUDENTS */}
+      <ConfirmModal
+        isOpen={isRestoreModalOpen}
+        title="Pulihkan Seluruh 43 Anggota Bawaan"
+        message="Apakah Anda yakin ingin memulihkan seluruh 43 anggota bawaan resmi PGT Mu'allimin?"
+        details={[
+          'Daftar lengkap 43 pemain resmi (Brass, Cologuard, Battery, Pit) akan dipulihkan utuh ke master data.',
+          'Pemain baru yang Anda tambahkan sendiri tetap aman dan tidak akan terhapus.',
+          'Riwayat sesi presensi dan catatan kehadiran yang telah tersimpan tetap rapi.'
+        ]}
+        confirmText="Ya, Pulihkan Sekarang"
+        cancelText="Batal"
+        onConfirm={executeRestoreDefaultStudents}
+        onCancel={() => setIsRestoreModalOpen(false)}
       />
 
       {/* MODAL: CLOUD DATABASE SYNC STATUS & BACKUP */}
