@@ -386,7 +386,7 @@ export default function App() {
 
     // Real-time listener for students (Authoritative Cloud Sync: respects deletions and local-only additions)
     const unsubStudents = subscribeStudents((remoteStudents) => {
-      if (remoteStudents && remoteStudents.length > 0) {
+      if (Array.isArray(remoteStudents)) {
         const deletedIds = getDeletedStudentIds();
         setStudents(prev => {
           const map = new Map<number, Student>();
@@ -396,10 +396,11 @@ export default function App() {
               map.set(remoteS.id, remoteS);
             }
           });
-          // 2. Preserve any local additions that haven't synced to cloud yet
-          if (prev && prev.length > 0) {
+          // 2. Preserve only brand new un-synced local additions created in current session
+          if (prev && prev.length > 0 && remoteStudents.length > 0) {
+            const nowTime = Date.now();
             prev.forEach(s => {
-              if (!deletedIds.has(s.id) && !map.has(s.id)) {
+              if (s.id > 1000000000000 && (nowTime - s.id < 15000) && !deletedIds.has(s.id) && !map.has(s.id)) {
                 map.set(s.id, s);
               }
             });
@@ -995,7 +996,7 @@ export default function App() {
     triggerToast(`Data ${updatedStudents.length} anggota berhasil diperbarui sesuai presensi kertas! Rekap otomatis disinkronkan.`, 'success');
 
     try {
-      await saveMultipleStudentsToCloud(updatedStudents);
+      await replaceAllStudentsInCloud(updatedStudents);
     } catch (e: any) {
       console.warn("Gagal simpan massal ke cloud:", e);
       triggerToast('Perubahan tersimpan di lokal (Cloud belum tersinkron).', 'warning');
@@ -1224,8 +1225,9 @@ export default function App() {
   };
 
   const handleConfirmClearAllStudents = async () => {
+    const oldStudentIds = students.map(s => s.id);
     const deletedSet = getDeletedStudentIds();
-    students.forEach(s => deletedSet.add(s.id));
+    oldStudentIds.forEach(id => deletedSet.add(id));
     localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(deletedSet)));
 
     setStudents([]);
@@ -1233,8 +1235,10 @@ export default function App() {
     setIsClearAllModalOpen(false);
     triggerToast('Seluruh data pemain lama telah dikosongkan. Anda dapat mulai menginput daftar pemain baru.');
 
-    for (const s of students) {
-      deleteStudentFromCloud(s.id).catch(() => {});
+    try {
+      await replaceAllStudentsInCloud([], oldStudentIds);
+    } catch (e) {
+      console.warn("Gagal hapus massal pemain di cloud:", e);
     }
   };
 

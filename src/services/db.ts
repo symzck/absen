@@ -152,11 +152,26 @@ export const replaceAllStudentsInCloud = async (
 ): Promise<void> => {
   notifyStatus('syncing');
   try {
+    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 4000, 'Cloud timeout');
+    const newIds = new Set(newStudentsList.map(s => String(s.id)));
     const batch = writeBatch(db);
+
+    // Delete any document currently in cloud that is not present in the new student list
+    if (existingSnap && !existingSnap.empty) {
+      existingSnap.forEach((docSnap) => {
+        if (!newIds.has(docSnap.id)) {
+          batch.delete(docSnap.ref);
+        }
+      });
+    }
+
+    // Delete explicit removed IDs
     for (const removedId of removedStudentIds) {
       const docRef = doc(db, 'students', String(removedId));
       batch.delete(docRef);
     }
+
+    // Write all new students
     for (const student of newStudentsList) {
       const docRef = doc(db, 'students', String(student.id));
       batch.set(docRef, {
@@ -168,6 +183,7 @@ export const replaceAllStudentsInCloud = async (
         updatedAt: new Date().toISOString()
       }, { merge: true });
     }
+
     await withTimeout(batch.commit(), 7000, 'Cloud timeout replace all students');
     notifyStatus('connected');
   } catch (error: any) {
@@ -496,7 +512,18 @@ export const uploadAllLocalDataToCloud = async (
 ): Promise<{ success: boolean; message: string }> => {
   notifyStatus('syncing');
   try {
+    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 4000, 'Cloud timeout');
+    const newIds = new Set(students.map(s => String(s.id)));
     const batch = writeBatch(db);
+
+    // Purge student docs in cloud that no longer exist locally
+    if (existingSnap && !existingSnap.empty) {
+      existingSnap.forEach((docSnap) => {
+        if (!newIds.has(docSnap.id)) {
+          batch.delete(docSnap.ref);
+        }
+      });
+    }
 
     students.forEach((student) => {
       const ref = doc(db, 'students', String(student.id));
