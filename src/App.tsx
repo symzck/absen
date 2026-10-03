@@ -21,6 +21,7 @@ import { getGoogleAccessToken } from './services/googleAuth';
 import { 
   saveStudentToCloud, 
   saveMultipleStudentsToCloud,
+  replaceAllStudentsInCloud,
   deleteStudentFromCloud, 
   saveAttendanceToCloud, 
   deleteAttendanceFromCloud, 
@@ -256,6 +257,8 @@ export default function App() {
   const [adminTab, setAdminTab] = useState<AdminTab>('home');
   const [petugasTab, setPetugasTab] = useState<PetugasTab>('home');
   const [isPaperSheetModalOpen, setIsPaperSheetModalOpen] = useState(false);
+  const [isInlineEditMode, setIsInlineEditMode] = useState(false);
+  const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -305,8 +308,9 @@ export default function App() {
     return INITIAL_ANNOUNCEMENTS;
   });
 
-  // Member delete modal state
+  // Member & User delete modal state
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [userToDelete, setUserToDelete] = useState<SystemUser | null>(null);
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
 
   const [attendances, setAttendances] = useState<DailyAttendance[]>(() => {
@@ -589,7 +593,7 @@ export default function App() {
     const cleanPass = userFormPassword.trim();
 
     if (!cleanUsername || !cleanFullName || !cleanPass) {
-      alert('Mohon lengkapi seluruh kolom input.');
+      triggerToast('Mohon lengkapi seluruh kolom input.', 'warning');
       return;
     }
 
@@ -598,7 +602,7 @@ export default function App() {
       u => u.username.toLowerCase() === cleanUsername && u.id !== editingUserId
     );
     if (existing) {
-      alert('Username tersebut sudah digunakan oleh pengguna lain. Harap gunakan username lain.');
+      triggerToast('Username tersebut sudah digunakan oleh pengguna lain. Harap gunakan username lain.', 'warning');
       return;
     }
 
@@ -657,26 +661,35 @@ export default function App() {
 
   const handleDeleteUser = async (userId: string, userName: string) => {
     if (userId === currentUser?.id) {
-      alert('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk.');
+      triggerToast('Anda tidak dapat menghapus akun Anda sendiri saat sedang masuk.', 'warning');
       return;
     }
     const adminCount = systemUsers.filter(u => u.role === 'admin').length;
     const targetUser = systemUsers.find(u => u.id === userId);
     if (targetUser?.role === 'admin' && adminCount <= 1) {
-      alert('Tidak dapat menghapus akun admin terakhir. Minimal harus ada 1 akun Administrator.');
+      triggerToast('Tidak dapat menghapus akun admin terakhir. Minimal harus ada 1 akun Administrator.', 'warning');
       return;
     }
 
-    if (confirm(`Apakah Anda yakin ingin menghapus akun "${userName}"? Akun ini tidak akan bisa login lagi.`)) {
-      setSystemUsers(prev => prev.filter(u => u.id !== userId));
-      triggerToast(`Akun "${userName}" telah dihapus.`);
+    if (targetUser) {
+      setUserToDelete(targetUser);
+    }
+  };
 
-      // Persist deletion to Cloud Firestore
-      try {
-        await deleteUserFromCloud(userId);
-      } catch (err) {
-        console.warn('Gagal hapus user di cloud:', err);
-      }
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    const userId = userToDelete.id;
+    const userName = userToDelete.fullName || userToDelete.username;
+    setUserToDelete(null);
+
+    setSystemUsers(prev => prev.filter(u => u.id !== userId));
+    triggerToast(`Akun "${userName}" telah dihapus.`);
+
+    // Persist deletion to Cloud Firestore
+    try {
+      await deleteUserFromCloud(userId);
+    } catch (err) {
+      console.warn('Gagal hapus user di cloud:', err);
     }
   };
 
@@ -684,11 +697,11 @@ export default function App() {
   const handleChangeAdminPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAdminPass.trim()) {
-      alert('Kata sandi baru tidak boleh kosong.');
+      triggerToast('Kata sandi baru tidak boleh kosong.', 'warning');
       return;
     }
     if (newAdminPass !== confirmAdminPass) {
-      alert('Konfirmasi kata sandi tidak cocok. Silakan ketik ulang.');
+      triggerToast('Konfirmasi kata sandi tidak cocok. Silakan ketik ulang.', 'warning');
       return;
     }
 
@@ -1210,6 +1223,21 @@ export default function App() {
     setStudentToDelete(target);
   };
 
+  const handleConfirmClearAllStudents = async () => {
+    const deletedSet = getDeletedStudentIds();
+    students.forEach(s => deletedSet.add(s.id));
+    localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(deletedSet)));
+
+    setStudents([]);
+    localStorage.setItem('pgt_students', JSON.stringify([]));
+    setIsClearAllModalOpen(false);
+    triggerToast('Seluruh data pemain lama telah dikosongkan. Anda dapat mulai menginput daftar pemain baru.');
+
+    for (const s of students) {
+      deleteStudentFromCloud(s.id).catch(() => {});
+    }
+  };
+
   const handleConfirmDeleteStudent = async () => {
     if (!studentToDelete) return;
     const { id, name } = studentToDelete;
@@ -1273,7 +1301,11 @@ export default function App() {
     }
   };
 
-  const sections = ['All', 'Brass', 'Cologuard', 'Battery', 'Pit'];
+  const sections = useMemo(() => {
+    const defaultSecs = ['All', 'Brass', 'Cologuard', 'Battery', 'Pit'];
+    const customSecs = students.map(s => s.section).filter(Boolean);
+    return Array.from(new Set([...defaultSecs, ...customSecs]));
+  }, [students]);
   
   const filteredStudents = students.filter(s => {
     const matchSection = selectedSection === 'All' || s.section === selectedSection;
@@ -1461,6 +1493,40 @@ export default function App() {
         cancelText="Batal"
         onConfirm={executeRestoreDefaultStudents}
         onCancel={() => setIsRestoreModalOpen(false)}
+      />
+
+      {/* MODAL: CONFIRM CLEAR ALL STUDENTS */}
+      <ConfirmModal
+        isOpen={isClearAllModalOpen}
+        title="Kosongkan Seluruh Data Pemain Lama"
+        message="Apakah Anda yakin ingin mengosongkan seluruh daftar pemain lama saat ini?"
+        details={[
+          'Semua baris pemain lama akan dihapus dari daftar master agar Anda dapat menginput daftar pemain baru dari awal.',
+          'Sistem tidak mematok pemain lama; Anda bebas mengunggah atau menginput ulang sesuai kebutuhan.',
+          'Jika diperlukan di kemudian hari, 43 pemain resmi dapat dipulihkan kembali kapan saja.'
+        ]}
+        confirmText="Ya, Kosongkan Pemain Lama"
+        cancelText="Batal"
+        isDanger={true}
+        onConfirm={handleConfirmClearAllStudents}
+        onCancel={() => setIsClearAllModalOpen(false)}
+      />
+
+      {/* MODAL: CONFIRM DELETE SYSTEM USER */}
+      <ConfirmModal
+        isOpen={!!userToDelete}
+        title="Hapus Akun Pengguna / Petugas"
+        message={`Apakah Anda yakin ingin menghapus akun "${userToDelete?.fullName || userToDelete?.username}"?`}
+        details={[
+          `Username: ${userToDelete?.username}`,
+          `Peran: ${userToDelete?.role === 'admin' ? 'Administrator' : 'Petugas Lapangan'}`,
+          'Akun ini tidak akan bisa digunakan untuk login lagi setelah dihapus.'
+        ]}
+        confirmText="Ya, Hapus Akun"
+        cancelText="Batal"
+        isDanger={true}
+        onConfirm={handleConfirmDeleteUser}
+        onCancel={() => setUserToDelete(null)}
       />
 
       {/* MODAL: PAPER ATTENDANCE SHEET (INPUT MASSAL SESUAI KERTAS) */}
@@ -1967,6 +2033,20 @@ export default function App() {
                     </button>
 
                     <button 
+                      type="button"
+                      onClick={() => setIsInlineEditMode(!isInlineEditMode)}
+                      className={`px-3 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
+                        isInlineEditMode 
+                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-950' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                      }`}
+                      title="Aktifkan mode edit cepat identitas pemain langsung di tabel tanpa membuka modal"
+                    >
+                      <Edit3 size={14} />
+                      <span>{isInlineEditMode ? 'Tutup Edit Cepat' : 'Edit Cepat Pemain'}</span>
+                    </button>
+
+                    <button 
                       onClick={handleMarkAllPresent}
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95"
                     >
@@ -2030,27 +2110,66 @@ export default function App() {
                           <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
                             <td className="py-3 px-5 text-center text-xs text-slate-500 tabular-nums">{idx + 1}</td>
                             <td className="py-3 px-5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-100">{student.name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingStudent(student);
-                                    setIsEditMemberModalOpen(true);
-                                  }}
-                                  className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
-                                  title={`Edit identitas, kelas, asrama, atau section ${student.name}`}
-                                >
-                                  <Edit3 size={13} />
-                                </button>
-                              </div>
-                              <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                                <span className="text-purple-300 font-semibold">{student.section}</span>
-                                <span>·</span>
-                                <span>Kelas {student.kelas}</span>
-                                <span>·</span>
-                                <span>Asrama {student.asrama}</span>
-                              </div>
+                              {isInlineEditMode ? (
+                                <div className="flex flex-col gap-1.5 p-1 bg-slate-950 border border-amber-500/50 rounded-xl">
+                                  <input 
+                                    type="text" 
+                                    value={student.name}
+                                    onChange={(e) => handleSaveEditedStudent({ ...student, name: e.target.value })}
+                                    className="px-2 py-1 text-xs font-bold text-white bg-slate-900 border border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                    placeholder="Nama Pemain..."
+                                  />
+                                  <div className="flex items-center gap-1.5 text-[11px]">
+                                    <input 
+                                      type="text" 
+                                      value={student.kelas}
+                                      onChange={(e) => handleSaveEditedStudent({ ...student, kelas: e.target.value })}
+                                      className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-purple-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
+                                      placeholder="Kelas"
+                                    />
+                                    <input 
+                                      type="text" 
+                                      value={student.asrama}
+                                      onChange={(e) => handleSaveEditedStudent({ ...student, asrama: e.target.value })}
+                                      className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-amber-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
+                                      placeholder="Asrama"
+                                    />
+                                    <select 
+                                      value={student.section}
+                                      onChange={(e) => handleSaveEditedStudent({ ...student, section: e.target.value })}
+                                      className="px-1.5 py-0.5 text-[11px] font-bold text-sky-200 bg-slate-900 border border-slate-700 rounded"
+                                    >
+                                      {['Brass', 'Cologuard', 'Battery', 'Pit', student.section].filter((v, i, a) => a.indexOf(v) === i).map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-slate-100">{student.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingStudent(student);
+                                        setIsEditMemberModalOpen(true);
+                                      }}
+                                      className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                      title={`Edit identitas, kelas, asrama, atau section ${student.name}`}
+                                    >
+                                      <Edit3 size={13} />
+                                    </button>
+                                  </div>
+                                  <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                                    <span className="text-purple-300 font-semibold">{student.section}</span>
+                                    <span>·</span>
+                                    <span>Kelas {student.kelas}</span>
+                                    <span>·</span>
+                                    <span>Asrama {student.asrama}</span>
+                                  </div>
+                                </>
+                              )}
                             </td>
                             <td className="py-3 px-5 text-center">
                               <div className="inline-flex items-center rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1 shadow-inner">
@@ -3974,6 +4093,17 @@ export default function App() {
                     <RotateCcw size={14} />
                     <span>Pulihkan 43 Anggota</span>
                   </button>
+                  {students.length > 0 && (
+                    <button 
+                      type="button"
+                      onClick={() => setIsClearAllModalOpen(true)}
+                      className="px-3.5 py-2.5 bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-800/60 font-bold rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer"
+                      title="Kosongkan seluruh baris pemain lama untuk menginput ulang daftar baru dari awal tanpa terpatok pemain lama"
+                    >
+                      <Trash2 size={14} />
+                      <span>Kosongkan Pemain Lama</span>
+                    </button>
+                  )}
                   <button 
                     onClick={() => setIsAddMemberModalOpen(true)}
                     className="px-4 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"

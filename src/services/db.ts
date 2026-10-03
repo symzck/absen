@@ -146,6 +146,36 @@ export const saveMultipleStudentsToCloud = async (studentsList: Student[]): Prom
   }
 };
 
+export const replaceAllStudentsInCloud = async (
+  newStudentsList: Student[],
+  removedStudentIds: number[] = []
+): Promise<void> => {
+  notifyStatus('syncing');
+  try {
+    const batch = writeBatch(db);
+    for (const removedId of removedStudentIds) {
+      const docRef = doc(db, 'students', String(removedId));
+      batch.delete(docRef);
+    }
+    for (const student of newStudentsList) {
+      const docRef = doc(db, 'students', String(student.id));
+      batch.set(docRef, {
+        id: student.id,
+        name: student.name,
+        kelas: student.kelas,
+        asrama: student.asrama,
+        section: student.section,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+    await withTimeout(batch.commit(), 7000, 'Cloud timeout replace all students');
+    notifyStatus('connected');
+  } catch (error: any) {
+    console.warn('[Firestore] Notice replacing students in cloud:', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+  }
+};
+
 export const deleteStudentFromCloud = async (studentId: number): Promise<void> => {
   notifyStatus('syncing');
   try {
