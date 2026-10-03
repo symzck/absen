@@ -6,7 +6,7 @@ import {
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
   Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
-  Home, Megaphone, Plus, Pin
+  Home, Megaphone, Plus, Pin, Calendar
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -16,6 +16,7 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { HomeDashboardTab } from './components/HomeDashboardTab';
 import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
+import { ScheduleSessionModal } from './components/ScheduleSessionModal';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -73,6 +74,11 @@ export interface DailyAttendance {
   id?: string;
   date: string;
   sessionName?: string;
+  scheduledTime?: string;
+  location?: string;
+  targetSection?: string;
+  description?: string;
+  isScheduled?: boolean;
   isSubmitted?: boolean;
   submittedAt?: string | null;
   submittedBy?: string | null;
@@ -291,6 +297,8 @@ export default function App() {
   const [isPaperSheetModalOpen, setIsPaperSheetModalOpen] = useState(false);
   const [isInlineEditMode, setIsInlineEditMode] = useState(false);
   const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [editingScheduleSession, setEditingScheduleSession] = useState<DailyAttendance | null>(null);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -361,14 +369,16 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.map((item: any) => ({
-          ...item,
-          id: item.id || `sesi-${item.date}`,
-          sessionName: item.sessionName || 'Latihan Rutin',
-          isSubmitted: item.isSubmitted !== false,
-          submittedAt: item.submittedAt || item.date,
-          submittedBy: item.submittedBy || 'Petugas Lapangan'
-        }));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: any) => ({
+            ...item,
+            id: item.id || `sesi-${item.date}`,
+            sessionName: item.sessionName || 'Latihan Rutin',
+            isSubmitted: item.isSubmitted !== false,
+            submittedAt: item.submittedAt || item.date,
+            submittedBy: item.submittedBy || 'Petugas Lapangan'
+          }));
+        }
       } catch (e) {}
     }
     return [];
@@ -548,7 +558,7 @@ export default function App() {
     if (existing?.sessionName) {
       setCurrentSessionName(existing.sessionName);
     }
-  }, [selectedDate]);
+  }, [selectedDate, attendances]);
 
   // Local Storage Synchronizations
   useEffect(() => {
@@ -1027,6 +1037,90 @@ export default function App() {
     if (revertedSession) {
       saveAttendanceToCloud(revertedSession).catch(() => {});
     }
+  };
+
+  const handleSaveSchedule = async (scheduleData: {
+    date: string;
+    sessionName: string;
+    scheduledTime: string;
+    location: string;
+    targetSection: string;
+    description: string;
+    autoPublishAnnouncement: boolean;
+  }) => {
+    let savedSession: DailyAttendance | null = null;
+    setAttendances(prev => {
+      const existingIndex = prev.findIndex(a => a.date === scheduleData.date);
+      let updated: DailyAttendance[];
+      if (existingIndex >= 0) {
+        updated = [...prev];
+        savedSession = {
+          ...updated[existingIndex],
+          sessionName: scheduleData.sessionName,
+          scheduledTime: scheduleData.scheduledTime,
+          location: scheduleData.location,
+          targetSection: scheduleData.targetSection,
+          description: scheduleData.description,
+          isScheduled: true
+        };
+        updated[existingIndex] = savedSession;
+      } else {
+        savedSession = {
+          id: `sesi-${scheduleData.date}`,
+          date: scheduleData.date,
+          sessionName: scheduleData.sessionName,
+          scheduledTime: scheduleData.scheduledTime,
+          location: scheduleData.location,
+          targetSection: scheduleData.targetSection,
+          description: scheduleData.description,
+          isScheduled: true,
+          isSubmitted: false,
+          records: []
+        };
+        updated = [savedSession, ...prev];
+      }
+      updated.sort((a, b) => b.date.localeCompare(a.date));
+      localStorage.setItem('pgt_attendances', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (savedSession) {
+      saveAttendanceToCloud(savedSession).catch(err => console.warn('Cloud sync schedule error:', err));
+    }
+
+    if (scheduleData.autoPublishAnnouncement) {
+      const newAnn: Announcement = {
+        id: `ann-sched-${Date.now()}`,
+        title: `📅 ${scheduleData.sessionName} (${scheduleData.date})`,
+        content: `Jadwal Latihan Resmi diterbitkan:\n\n• Waktu: ${scheduleData.scheduledTime}\n• Lokasi: ${scheduleData.location}\n• Unit: ${scheduleData.targetSection === 'All' ? 'Seluruh Unit Korps' : scheduleData.targetSection}\n• Catatan: ${scheduleData.description || '-'}\n\nHarap seluruh anggota bersiap dan hadir tepat waktu.`,
+        category: 'schedule',
+        targetAudience: (['All', 'Brass', 'Cologuard', 'Battery', 'Pit'].includes(scheduleData.targetSection) ? scheduleData.targetSection : 'All') as any,
+        author: currentUser?.fullName || 'Administrator Utama',
+        authorRole: currentUser?.role === 'admin' ? 'Super Admin' : 'Petugas Lapangan',
+        createdAt: new Date().toISOString().split('T')[0],
+        pinned: true
+      };
+      setAnnouncements(prev => {
+        const updated = [newAnn, ...prev];
+        localStorage.setItem('pgt_announcements', JSON.stringify(updated));
+        saveAnnouncementToCloud(newAnn).catch(() => {});
+        return updated;
+      });
+    }
+
+    setSelectedDate(scheduleData.date);
+    if (scheduleData.sessionName) setCurrentSessionName(scheduleData.sessionName);
+    triggerToast(`Jadwal latihan "${scheduleData.sessionName}" tanggal ${scheduleData.date} resmi diterbitkan!`, 'success');
+  };
+
+  const handleDeleteSchedule = async (sessionId: string) => {
+    setAttendances(prev => {
+      const updated = prev.filter(a => (a.id || `sesi-${a.date}`) !== sessionId);
+      localStorage.setItem('pgt_attendances', JSON.stringify(updated));
+      return updated;
+    });
+    deleteAttendanceFromCloud(sessionId).catch(() => {});
+    triggerToast('Jadwal sesi latihan berhasil dihapus.');
   };
 
   // Member editing handler
@@ -1542,6 +1636,20 @@ export default function App() {
           setEditingStudent(null);
         }}
         onSave={handleSaveEditedStudent}
+      />
+
+      {/* MODAL: SCHEDULE PRACTICE SESSION */}
+      <ScheduleSessionModal
+        isOpen={isScheduleModalOpen}
+        editingSession={editingScheduleSession}
+        students={activeStudents}
+        onClose={() => {
+          setIsScheduleModalOpen(false);
+          setEditingScheduleSession(null);
+        }}
+        onSaveSchedule={handleSaveSchedule}
+        onDeleteSchedule={handleDeleteSchedule}
+        triggerToast={triggerToast}
       />
 
       {/* MODAL: CONFIRM SUBMIT ATTENDANCE SESSION */}
@@ -2075,6 +2183,11 @@ export default function App() {
               }}
               onOpenAddMember={() => setIsAddMemberModalOpen(true)}
               onOpenAddAnnouncement={() => setPetugasTab('announcements')}
+              onOpenScheduleModal={(session) => {
+                setEditingScheduleSession(session || null);
+                setIsScheduleModalOpen(true);
+              }}
+              onSelectDate={(date) => setSelectedDate(date)}
               triggerToast={triggerToast}
             />
           )}
@@ -2093,9 +2206,34 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* Practice Session Quick Dropdown */}
+                    {attendances.length > 0 && (
+                      <div className="flex items-center bg-slate-950 border border-purple-800/80 rounded-xl px-3 py-2 text-xs">
+                        <Calendar size={14} className="text-amber-400 mr-2 shrink-0" />
+                        <select 
+                          value={selectedDate}
+                          onChange={(e) => {
+                            setSelectedDate(e.target.value);
+                            const matched = attendances.find(a => a.date === e.target.value);
+                            if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
+                          }}
+                          className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[220px] truncate"
+                        >
+                          <option value={selectedDate} className="bg-slate-900 text-white">
+                            📅 {selectedDate} ({attendances.find(a => a.date === selectedDate)?.sessionName || 'Latihan Rutin'})
+                          </option>
+                          {attendances.filter(a => a.date !== selectedDate).map(a => (
+                            <option key={a.date} value={a.date} className="bg-slate-900 text-white">
+                              📅 {a.date} - {a.sessionName || 'Latihan Rutin'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {/* Date Selector */}
                     <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                      <span className="text-slate-400 mr-2 font-medium">Tanggal:</span>
+                      <span className="text-slate-400 mr-2 font-medium">Tanggal Custom:</span>
                       <input 
                         type="date" 
                         value={selectedDate}
@@ -2476,6 +2614,7 @@ export default function App() {
                   setIsSubmitConfirmOpen(true);
                 }
               }}
+              onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
               triggerToast={triggerToast}
             />
           )}
@@ -3388,6 +3527,11 @@ export default function App() {
               onSelectAnnouncement={() => setAdminTab('announcements')}
               onOpenAddMember={() => setIsAddMemberModalOpen(true)}
               onOpenAddAnnouncement={() => setAdminTab('announcements')}
+              onOpenScheduleModal={(session) => {
+                setEditingScheduleSession(session || null);
+                setIsScheduleModalOpen(true);
+              }}
+              onSelectDate={(date) => setSelectedDate(date)}
               triggerToast={triggerToast}
             />
           )}
@@ -4339,6 +4483,7 @@ export default function App() {
                   setIsSubmitConfirmOpen(true);
                 }
               }}
+              onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
               triggerToast={triggerToast}
             />
           )}

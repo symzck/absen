@@ -23,6 +23,11 @@ export interface AttendanceSession {
   id?: string;
   date: string;
   sessionName?: string;
+  scheduledTime?: string;
+  location?: string;
+  targetSection?: string;
+  description?: string;
+  isScheduled?: boolean;
   isSubmitted?: boolean;
   submittedAt?: string | null;
   submittedBy?: string | null;
@@ -36,6 +41,7 @@ interface AttendanceSessionsTabProps {
   onUpdateSession: (updatedSession: AttendanceSession) => void;
   onDeleteSession: (sessionIdentifier: string) => void;
   onSubmitSession: (sessionIdentifier: string) => void;
+  onOpenScheduleModal?: () => void;
   triggerToast: (msg: string) => void;
 }
 
@@ -46,6 +52,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   onUpdateSession,
   onDeleteSession,
   onSubmitSession,
+  onOpenScheduleModal,
   triggerToast
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'submitted' | 'draft'>('all');
@@ -168,8 +175,17 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
           </p>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-2">
+        {/* Filter Pills & Schedule Button */}
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenScheduleModal && (
+            <button
+              type="button"
+              onClick={onOpenScheduleModal}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer"
+            >
+              + Jadwalkan Sesi
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setFilterType('all')}

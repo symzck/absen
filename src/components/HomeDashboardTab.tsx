@@ -15,10 +15,9 @@ import {
   AlertCircle, 
   ArrowRight,
   Pin,
-  TrendingUp,
-  UserCheck,
+  MapPin,
+  Plus,
   Music,
-  Flame,
   ChevronRight
 } from 'lucide-react';
 import { Student, DailyAttendance, SystemUser } from '../App';
@@ -35,6 +34,8 @@ interface HomeDashboardTabProps {
   onSelectAnnouncement?: (ann: Announcement) => void;
   onOpenAddMember?: () => void;
   onOpenAddAnnouncement?: () => void;
+  onOpenScheduleModal?: (session?: DailyAttendance) => void;
+  onSelectDate?: (date: string) => void;
   triggerToast: (msg: string, type?: 'success' | 'warning' | 'info') => void;
 }
 
@@ -49,9 +50,12 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
   onSelectAnnouncement,
   onOpenAddMember,
   onOpenAddAnnouncement,
+  onOpenScheduleModal,
+  onSelectDate,
   triggerToast
 }) => {
   const isAdmin = currentUser.role === 'admin';
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Format today date nicely in Indonesian
   const formattedDate = new Date().toLocaleDateString('id-ID', {
@@ -61,14 +65,15 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
     day: 'numeric'
   });
 
+  // Scheduled practice sessions list sorted by date descending
+  const scheduledSessions = [...attendances].sort((a, b) => b.date.localeCompare(a.date));
+  const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
+
   // Current session calculations
   const todaySession = attendances.find(a => a.date === selectedDate);
   const totalStudents = students.length;
   const records = todaySession?.records || [];
   const presentCount = records.filter(r => r.status === 'Hadir').length;
-  const sickCount = records.filter(r => r.status === 'Sakit').length;
-  const permitCount = records.filter(r => r.status === 'Izin').length;
-  const absentCount = records.filter(r => r.status === 'Alfa').length;
   const recordedCount = records.filter(r => Boolean(r.status)).length;
   const presentRate = recordedCount > 0 ? Math.round((presentCount / recordedCount) * 100) : 0;
 
@@ -101,8 +106,14 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
   // Top Section by attendance
   const topSection = [...sectionStats].sort((a, b) => b.rate - a.rate)[0];
 
+  const handleSelectSessionDate = (dateStr: string) => {
+    if (onSelectDate) onSelectDate(dateStr);
+    onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance');
+    triggerToast(`Sesi latihan tanggal ${dateStr} dipilih.`, 'info');
+  };
+
   return (
-    <div className="space-y-6 pb-24 md:pb-8">
+    <div className="space-y-6 pb-24 md:pb-8 text-left">
       {/* 1. HERO WELCOME BANNER */}
       <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-purple-950/80 to-slate-900 border border-purple-800/40 p-6 sm:p-8 shadow-2xl">
         <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
@@ -120,7 +131,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
-              Pantau kedisiplinan <strong>43 pemain</strong>, umumkan informasi latihan terbaru, dan catat presensi lapangan dengan cepat serta tersinkronisasi.
+              Pantau kedisiplinan <strong>{totalStudents} pemain</strong>, jadwalkan sesi latihan korps, dan catat presensi lapangan secara otomatis dan fleksibel.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-slate-400">
@@ -139,27 +150,28 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
           {/* Quick Session Status Capsule */}
           <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto shrink-0">
             <div className={`p-4 rounded-2xl border backdrop-blur-sm shadow-lg ${
-              todaySession?.isSubmitted 
+              isTodayPracticeDay 
                 ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-200' 
                 : 'bg-amber-950/60 border-amber-500/50 text-amber-200'
             }`}>
               <div className="flex items-center gap-2.5">
-                {todaySession?.isSubmitted ? (
+                {isTodayPracticeDay ? (
                   <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
                 ) : (
                   <AlertCircle size={18} className="text-amber-400 shrink-0" />
                 )}
                 <div>
-                  <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Status Presensi Hari Ini</div>
+                  <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Status Jadwal Hari Ini</div>
                   <div className="text-sm font-extrabold text-white">
-                    {todaySession?.isSubmitted ? 'Resmi Ter-submit' : 'Masih Draf (Siap Diisi)'}
+                    {isTodayPracticeDay ? 'Jadwal Latihan Resmi Active' : 'Bukan Jadwal Latihan Harian'}
                   </div>
                 </div>
               </div>
             </div>
 
             <button
-              onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'petugas_absen')}
+              type="button"
+              onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance')}
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-950/50 transition-all active:scale-95 cursor-pointer"
             >
               <ClipboardList size={16} />
@@ -225,7 +237,142 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
         </div>
       </div>
 
-      {/* 3. QUICK NAVIGATION TILES (PINTAS CEPAT) */}
+      {/* 3. JADWAL & SESI LATIHAN KORPS (DIATUR ADMIN) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-900/40 text-amber-300 border border-amber-700/40 text-[11px] font-semibold mb-1">
+              <Calendar size={12} className="text-amber-400" /> Sesi Latihan Resmi (Diatur Admin)
+            </div>
+            <h2 className="text-lg font-black text-white tracking-tight">Jadwal & Agenda Latihan Korps</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Latihan tidak dilaksanakan setiap hari. Admin mengatur tanggal & waktu sesi latihan resmi.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isAdmin && onOpenScheduleModal && (
+              <button
+                type="button"
+                onClick={() => onOpenScheduleModal()}
+                className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <Plus size={15} />
+                <span>+ Jadwalkan Sesi Latihan</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onNavigateTab(isAdmin ? 'edit_absensi' : 'sessions')}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>Semua Sesi ({scheduledSessions.length})</span>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+
+        {scheduledSessions.length === 0 ? (
+          <div className="p-8 text-center bg-slate-950 rounded-2xl border border-slate-800 text-slate-400 text-xs space-y-3">
+            <Calendar size={28} className="mx-auto text-slate-600" />
+            <p className="font-semibold text-slate-300">Belum ada sesi latihan yang dijadwalkan oleh Admin.</p>
+            {isAdmin && onOpenScheduleModal && (
+              <button
+                type="button"
+                onClick={() => onOpenScheduleModal()}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <Plus size={14} />
+                <span>Buat Jadwal Latihan Pertama</span>
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {scheduledSessions.slice(0, 3).map((session) => {
+              const isSubmitted = session.isSubmitted !== false;
+              const isToday = session.date === todayStr;
+
+              return (
+                <div
+                  key={session.id || session.date}
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-md ${
+                    isToday
+                      ? 'bg-purple-950/40 border-purple-500 hover:border-purple-400'
+                      : 'bg-slate-950 border-slate-800 hover:border-purple-600/50'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-purple-900/40 text-purple-300 border-purple-700/50 flex items-center gap-1">
+                        <Calendar size={11} /> {session.date} {isToday ? '(Hari Ini)' : ''}
+                      </span>
+
+                      {isSubmitted ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          Ter-submit
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          Draf
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="font-bold text-sm text-white line-clamp-1">
+                      {session.sessionName || 'Latihan Rutin'}
+                    </h3>
+
+                    <div className="space-y-1 text-xs text-slate-400">
+                      {session.scheduledTime && (
+                        <div className="flex items-center gap-1.5">
+                          <Clock size={12} className="text-purple-400 shrink-0" />
+                          <span>{session.scheduledTime}</span>
+                        </div>
+                      )}
+                      {session.location && (
+                        <div className="flex items-center gap-1.5">
+                          <MapPin size={12} className="text-amber-400 shrink-0" />
+                          <span className="truncate">{session.location}</span>
+                        </div>
+                      )}
+                      {session.targetSection && session.targetSection !== 'All' && (
+                        <div className="text-[11px] text-purple-300 font-medium">
+                          Unit: Section {session.targetSection}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectSessionDate(session.date)}
+                      className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <span>Presensi Sesi Ini</span>
+                      <ArrowRight size={13} />
+                    </button>
+
+                    {isAdmin && onOpenScheduleModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenScheduleModal(session)}
+                        className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                        title="Edit jadwal sesi ini"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 4. QUICK NAVIGATION TILES (MENU PINTAS UTAMA) */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -240,10 +387,10 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {/* Card 1: Presensi Seluruh Sesi */}
+          {/* Tile 1: Input Presensi */}
           <button
             type="button"
-            onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'petugas_absen')}
+            onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance')}
             className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-3">
@@ -254,7 +401,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
             <div>
               <div className="font-bold text-sm text-white group-hover:text-purple-300 transition-colors">
-                Presensi Sesi
+                Input Presensi
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5">
                 Isi & submit daftar hadir
@@ -262,10 +409,10 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
           </button>
 
-          {/* Card 2: Edit Data Absen */}
+          {/* Tile 2: Kelola & Submit Sesi */}
           <button
             type="button"
-            onClick={() => onNavigateTab(isAdmin ? 'edit_absensi' : 'my_history')}
+            onClick={() => onNavigateTab(isAdmin ? 'edit_absensi' : 'sessions')}
             className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
           >
             <div className="flex items-center justify-between mb-3">
@@ -276,7 +423,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
             <div>
               <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                {isAdmin ? 'Edit Data Absen' : 'Riwayat Absensi'}
+                Kelola & Submit Sesi
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5">
                 {attendances.length} sesi tersimpan
@@ -284,7 +431,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
           </button>
 
-          {/* Card 3: Papan Informasi & Pengumuman (NEW FEATURE) */}
+          {/* Tile 3: Papan Pengumuman */}
           <button
             type="button"
             onClick={() => onNavigateTab('announcements')}
@@ -308,77 +455,52 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
           </button>
 
-          {/* Card 4: Database Pemain */}
+          {/* Tile 4: Database Pemain */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('members')}
+            className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 group-hover:scale-110 flex items-center justify-center transition-transform">
+                <Users size={20} />
+              </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-emerald-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors">
+                Database Pemain
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                {students.length} anggota marching band
+              </div>
+            </div>
+          </button>
+
+          {/* Tile 5: Rekapitulasi & Leaderboard */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('recap')}
+            className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform">
+                <BarChart3 size={20} />
+              </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
+                Rekap & Ranking
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                Evaluasi & export Excel
+              </div>
+            </div>
+          </button>
+
+          {/* Tile 6: Ringkasan Sesi (Petugas) / Google Sheets (Admin) */}
           {isAdmin ? (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('members')}
-              className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 group-hover:scale-110 flex items-center justify-center transition-transform">
-                  <Users size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-emerald-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors">
-                  Database Pemain
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {students.length} anggota marching band
-                </div>
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('recap')}
-              className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform">
-                  <Trophy size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                  Leaderboard Section
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Peringkat disiplin korps
-                </div>
-              </div>
-            </button>
-          )}
-
-          {/* Card 5: Rekapitulasi & Leaderboard (Admin) */}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('recap')}
-              className="p-4 rounded-2xl bg-slate-950/70 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform">
-                  <BarChart3 size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                  Rekap & Ranking
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Evaluasi & export Excel
-                </div>
-              </div>
-            </button>
-          )}
-
-          {/* Card 6: Google Sheets Sync (Admin) */}
-          {isAdmin && (
             <button
               type="button"
               onClick={() => onNavigateTab('google_sheets')}
@@ -401,10 +523,31 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 </div>
               </div>
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onNavigateTab('my_history')}
+              className="p-4 rounded-2xl bg-slate-950/70 hover:bg-indigo-950/30 border border-slate-800 hover:border-indigo-500/50 text-left transition-all group flex flex-col justify-between cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 group-hover:scale-110 flex items-center justify-center transition-transform">
+                  <Clock size={20} />
+                </div>
+                <ArrowRight size={14} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
+              </div>
+              <div>
+                <div className="font-bold text-sm text-white group-hover:text-indigo-300 transition-colors">
+                  Ringkasan Sesi
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Catatan historis tugas
+                </div>
+              </div>
+            </button>
           )}
 
-          {/* Card 7: Kelola Akun & Petugas (Admin) */}
-          {isAdmin && (
+          {/* Tile 7: Kelola Akun & Petugas (Admin) / Jadwal Sesi (Petugas) */}
+          {isAdmin ? (
             <button
               type="button"
               onClick={() => onNavigateTab('manage_users')}
@@ -425,11 +568,32 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 </div>
               </div>
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onOpenScheduleModal ? onOpenScheduleModal() : onNavigateTab('sessions')}
+              className="p-4 rounded-2xl bg-slate-950/70 hover:bg-amber-950/30 border border-slate-800 hover:border-amber-500/50 text-left transition-all group flex flex-col justify-between cursor-pointer"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform">
+                  <Calendar size={20} />
+                </div>
+                <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
+              </div>
+              <div>
+                <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
+                  Jadwal Latihan
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Informasi agenda & lokasi
+                </div>
+              </div>
+            </button>
           )}
         </div>
       </div>
 
-      {/* 4. PAPAN INFORMASI & PENGUMUMAN TERBARU (LIVE CARDS) */}
+      {/* 5. PAPAN INFORMASI & PENGUMUMAN TERBARU (LIVE CARDS) */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
           <div>
@@ -520,7 +684,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
         )}
       </div>
 
-      {/* 5. STATISTIK PER SECTION INSTRUMEN */}
+      {/* 6. STATISTIK PER SECTION INSTRUMEN */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div>
