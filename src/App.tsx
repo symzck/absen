@@ -150,6 +150,38 @@ const INITIAL_USERS: SystemUser[] = [
 
 export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
   {
+    id: 'ann-tutorial',
+    title: '📖 PANDUAN PENGGUNAAN SISTEM ABSENSI TERPADU PGT MU\'ALLIMIN',
+    content: `Berikut adalah panduan langkah demi langkah penggunaan Sistem Absensi Terpadu PGT Mu'allimin:
+
+1. LOGIN AKUN PETUGAS & ADMIN
+• Buka aplikasi dan pilih tombol Login. Masukkan Username & Password petugas section Anda (misal: petugas_brass, petugas_battery) atau akun Administrator.
+
+2. PENCATATAN PRESENSI SESI LATIHAN
+• Pilih Tanggal dan Section instrumen di bagian toolbar atas.
+• Klik status kehadiran setiap anggota: Hadir (Hijau), Sakit (Kuning), Izin (Biru), atau Alfa (Merah).
+• Gunakan tombol "Hadir Semua" untuk menandai seluruh anggota hadir sekaligus secara cepat.
+• Tambahkan Catatan Izin/Keterangan jika anggota berhalangan.
+
+3. PEMBARUAN & EDIT DATA PEMAIN DENGAN FLEKSIBEL
+• Mode Edit Cepat Pemain: Klik tombol "Edit Cepat Pemain" di atas tabel untuk mengubah Nama, Kelas, Asrama, dan Section langsung di dalam baris tabel tanpa membuka modal.
+• Mode Lembar Presensi Kertas: Klik "Mode Presensi Kertas" untuk mengunggah foto lembar presensi fisik (Split View) atau menempelkan daftar teks massal dari WhatsApp/Excel.
+• Kosongkan Pemain Lama: Jika ingin mengganti roster pemain dari awal tanpa terpatok pemain lama, gunakan tombol "Kosongkan Pemain Lama".
+
+4. FINALISASI & SUBMIT PRESENSI
+• Setelah selesai mencatat kehadiran, klik tombol "Submit Presensi Sesi Ini".
+• Tekan "Konfirmasi Submit Presensi". Data sesi akan difinalisasi dan langsung masuk ke Rekapitulasi Kehadiran, Peringkat Disiplin Section, dan Cloud Database.
+
+5. PANTAU REKAPITULASI & PERINGKAT DISIPLIN
+• Buka tab "Rekapitulasi Kehadiran" untuk melihat persentase kehadiran per section, leaderboard disiplin, serta mengunduh rekap dalam format CSV/Excel.`,
+    category: 'info',
+    targetAudience: 'All',
+    author: 'Tim Sistem Informasi PGT Mu\'allimin',
+    authorRole: 'Super Admin',
+    createdAt: '2026-10-03',
+    pinned: true,
+  },
+  {
     id: 'ann-1',
     title: 'Gladi Bersih Lapangan Persiapan Konser & Apel Akbar',
     content: 'Diberitahukan kepada seluruh anggota Korps Marching Band PGT Mu\'allimin bahwa jadwal latihan Sabtu sore akan dialokasikan penuh untuk Gladi Lapangan bersama instrumen lengkap. Harap hadir 15 menit sebelum waktu dimulai dengan membawa instrumen dan partitur masing-masing.',
@@ -990,13 +1022,31 @@ export default function App() {
 
   // Paper Attendance Sheet (Lembar Presensi Kertas) batch update handler
   const handleSaveAllPaperSheet = async (updatedStudents: Student[]) => {
-    setStudents(updatedStudents);
-    localStorage.setItem('pgt_students', JSON.stringify(updatedStudents));
+    const cleanedStudents = updatedStudents.filter(s => s && s.name && s.name.trim() !== '');
+
+    // Identify which old students were omitted/removed in paper sheet update
+    const oldIds = new Set(students.map(s => s.id));
+    const newIds = new Set(cleanedStudents.map(s => s.id));
+    const removedIds: number[] = [];
+    oldIds.forEach(id => {
+      if (!newIds.has(id)) {
+        removedIds.push(id);
+      }
+    });
+
+    if (removedIds.length > 0) {
+      const deletedSet = getDeletedStudentIds();
+      removedIds.forEach(id => deletedSet.add(id));
+      localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(deletedSet)));
+    }
+
+    setStudents(cleanedStudents);
+    localStorage.setItem('pgt_students', JSON.stringify(cleanedStudents));
     setIsPaperSheetModalOpen(false);
-    triggerToast(`Data ${updatedStudents.length} anggota berhasil diperbarui sesuai presensi kertas! Rekap otomatis disinkronkan.`, 'success');
+    triggerToast(`Data ${cleanedStudents.length} anggota berhasil diperbarui sesuai presensi kertas! Rekap otomatis disinkronkan.`, 'success');
 
     try {
-      await replaceAllStudentsInCloud(updatedStudents);
+      await replaceAllStudentsInCloud(cleanedStudents, removedIds);
     } catch (e: any) {
       console.warn("Gagal simpan massal ke cloud:", e);
       triggerToast('Perubahan tersimpan di lokal (Cloud belum tersinkron).', 'warning');
@@ -1051,7 +1101,12 @@ export default function App() {
     }
   };
 
-  // DELAYED RECAP: Only submitted sessions are included!
+  // DELAYED RECAP & ACTIVE STUDENTS COMPUTATION
+  const activeStudents = useMemo(() => {
+    const deletedSet = getDeletedStudentIds();
+    return students.filter(s => s && s.id && !deletedSet.has(s.id) && s.name.trim() !== '');
+  }, [students]);
+
   const submittedSessions = useMemo(() => {
     return attendances.filter(a => a.isSubmitted !== false);
   }, [attendances]);
@@ -1059,7 +1114,7 @@ export default function App() {
   const recapData = useMemo(() => {
     const totalDays = submittedSessions.length || 0;
     
-    return students.map(student => {
+    return activeStudents.map(student => {
       let presentCount = 0;
       let izinCount = 0;
       let sakitCount = 0;
@@ -1307,17 +1362,19 @@ export default function App() {
 
   const sections = useMemo(() => {
     const defaultSecs = ['All', 'Brass', 'Cologuard', 'Battery', 'Pit'];
-    const customSecs = students.map(s => s.section).filter(Boolean);
+    const customSecs = activeStudents.map(s => s.section).filter(Boolean);
     return Array.from(new Set([...defaultSecs, ...customSecs]));
-  }, [students]);
+  }, [activeStudents]);
   
-  const filteredStudents = students.filter(s => {
-    const matchSection = selectedSection === 'All' || s.section === selectedSection;
-    const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        s.kelas.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        s.asrama.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchSection && matchSearch;
-  });
+  const filteredStudents = useMemo(() => {
+    return activeStudents.filter(s => {
+      const matchSection = selectedSection === 'All' || s.section === selectedSection;
+      const matchSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          s.kelas.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          s.asrama.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchSection && matchSearch;
+    });
+  }, [activeStudents, selectedSection, searchQuery]);
   
   const todayRecords = attendances.find(a => a.date === selectedDate)?.records || [];
   const presentCount = filteredStudents.filter(s => todayRecords.find(r => r.studentId === s.id && r.status === 'Hadir')).length;
@@ -1536,7 +1593,7 @@ export default function App() {
       {/* MODAL: PAPER ATTENDANCE SHEET (INPUT MASSAL SESUAI KERTAS) */}
       <PaperAttendanceSheetModal
         isOpen={isPaperSheetModalOpen}
-        students={students}
+        students={activeStudents}
         onClose={() => setIsPaperSheetModalOpen(false)}
         onSaveAll={handleSaveAllPaperSheet}
         onRestoreDefaults={handleRestoreDefaultStudents}
@@ -2364,7 +2421,7 @@ export default function App() {
           {petugasTab === 'sessions' && (
             <AttendanceSessionsTab
               sessions={attendances}
-              students={students}
+              students={activeStudents}
               currentUserName={currentUser?.fullName || 'Petugas Lapangan'}
               onUpdateSession={handleUpdateSession}
               onDeleteSession={handleDeleteSession}
@@ -4072,7 +4129,7 @@ export default function App() {
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-purple-900/40 text-purple-300 border border-purple-700/40 text-[11px] font-semibold mb-2">
                     <Users size={12} className="text-amber-400" /> Database Anggota Marching Band
                   </div>
-                  <h2 className="text-2xl font-black text-white tracking-tight">Master Data Pemain ({students.length} Orang)</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Master Data Pemain ({activeStudents.length} Orang)</h2>
                   <p className="text-xs text-slate-400 mt-1">
                     Kelola data identitas, kelas, asrama, dan penempatan section instrumen marching band.
                   </p>
@@ -4142,7 +4199,7 @@ export default function App() {
 
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
                   {sections.map(sec => {
-                    const count = sec === 'All' ? students.length : students.filter(s => s.section === sec).length;
+                    const count = sec === 'All' ? activeStudents.length : activeStudents.filter(s => s.section === sec).length;
                     return (
                       <button
                         key={sec}
@@ -4163,64 +4220,49 @@ export default function App() {
 
               {/* Members Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {students
-                  .filter(s => {
-                    const matchSec = selectedSection === 'All' || s.section === selectedSection;
-                    const query = searchQuery.toLowerCase().trim();
-                    const matchQuery = !query || 
-                      s.name.toLowerCase().includes(query) || 
-                      s.section.toLowerCase().includes(query) ||
-                      s.kelas.toLowerCase().includes(query) ||
-                      s.asrama.toLowerCase().includes(query);
-                    return matchSec && matchQuery;
-                  })
-                  .map(s => (
-                    <div 
-                      key={s.id}
-                      className="bg-slate-900 border border-slate-800 hover:border-purple-600/40 p-4 rounded-2xl flex items-center justify-between shadow-md transition-all group"
-                    >
-                      <div>
-                        <div className="font-bold text-slate-100 group-hover:text-purple-300 transition-colors">
-                          {s.name}
-                        </div>
-                        <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                          <span className="text-amber-400 font-semibold">{s.section}</span>
-                          <span>·</span>
-                          <span>Kelas {s.kelas}</span>
-                          <span>·</span>
-                          <span>Asrama {s.asrama}</span>
-                        </div>
+                {filteredStudents.map(s => (
+                  <div 
+                    key={s.id}
+                    className="bg-slate-900 border border-slate-800 hover:border-purple-600/40 p-4 rounded-2xl flex items-center justify-between shadow-md transition-all group"
+                  >
+                    <div>
+                      <div className="font-bold text-slate-100 group-hover:text-purple-300 transition-colors">
+                        {s.name}
                       </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button 
-                          type="button"
-                          onClick={() => {
-                            setEditingStudent(s);
-                            setIsEditMemberModalOpen(true);
-                          }}
-                          className="p-2 text-slate-400 hover:text-purple-300 hover:bg-purple-950/50 rounded-xl transition-colors cursor-pointer"
-                          title="Ubah Data Pemain"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => handleDeleteStudent(s.id, s.name)}
-                          className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
-                          title="Hapus Pemain"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                      <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                        <span className="text-amber-400 font-semibold">{s.section}</span>
+                        <span>·</span>
+                        <span>Kelas {s.kelas}</span>
+                        <span>·</span>
+                        <span>Asrama {s.asrama}</span>
                       </div>
                     </div>
-                  ))}
 
-                {students.filter(s => {
-                  const matchSec = selectedSection === 'All' || s.section === selectedSection;
-                  const query = searchQuery.toLowerCase().trim();
-                  return matchSec && (!query || s.name.toLowerCase().includes(query) || s.section.toLowerCase().includes(query) || s.kelas.toLowerCase().includes(query) || s.asrama.toLowerCase().includes(query));
-                }).length === 0 && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setEditingStudent(s);
+                          setIsEditMemberModalOpen(true);
+                        }}
+                        className="p-2 text-slate-400 hover:text-purple-300 hover:bg-purple-950/50 rounded-xl transition-colors cursor-pointer"
+                        title="Ubah Data Pemain"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => handleDeleteStudent(s.id, s.name)}
+                        className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-950/40 rounded-xl transition-colors cursor-pointer"
+                        title="Hapus Pemain"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {filteredStudents.length === 0 && (
                   <div className="col-span-full bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-3">
                     <Users size={36} className="mx-auto text-slate-600" />
                     <div className="font-bold text-slate-300 text-sm">Tidak ada pemain yang cocok dengan pencarian</div>
