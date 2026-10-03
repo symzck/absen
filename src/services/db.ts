@@ -123,6 +123,29 @@ export const saveStudentToCloud = async (student: Student): Promise<void> => {
   }
 };
 
+export const saveMultipleStudentsToCloud = async (studentsList: Student[]): Promise<void> => {
+  notifyStatus('syncing');
+  try {
+    const batch = writeBatch(db);
+    for (const student of studentsList) {
+      const docRef = doc(db, 'students', String(student.id));
+      batch.set(docRef, {
+        id: student.id,
+        name: student.name,
+        kelas: student.kelas,
+        asrama: student.asrama,
+        section: student.section,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    }
+    await withTimeout(batch.commit(), 6000, 'Cloud timeout batch save');
+    notifyStatus('connected');
+  } catch (error: any) {
+    console.warn('[Firestore] Notice batch saving students to cloud:', error?.message);
+    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+  }
+};
+
 export const deleteStudentFromCloud = async (studentId: number): Promise<void> => {
   notifyStatus('syncing');
   try {

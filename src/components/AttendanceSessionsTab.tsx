@@ -164,7 +164,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
             Koreksi & Edit Data Absensi ({sessions.length} Sesi)
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Admin memiliki wewenang penuh untuk mengubah status hadir, catatan halangan, atau mengembalikan sesi ke status draf.
+            Petugas Lapangan & Administrator dapat memfinalisasi submit presensi resmi, mengubah status hadir, catatan halangan, atau mengembalikan sesi ke status draf.
           </p>
         </div>
 

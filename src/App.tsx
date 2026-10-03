@@ -15,10 +15,12 @@ import { AttendanceSessionsTab } from './components/AttendanceSessionsTab';
 import { ConfirmModal } from './components/ConfirmModal';
 import { HomeDashboardTab } from './components/HomeDashboardTab';
 import { AnnouncementsTab } from './components/AnnouncementsTab';
+import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
   saveStudentToCloud, 
+  saveMultipleStudentsToCloud,
   deleteStudentFromCloud, 
   saveAttendanceToCloud, 
   deleteAttendanceFromCloud, 
@@ -250,9 +252,10 @@ export default function App() {
   // Petugas: 'attendance' | 'announcements' | 'my_history'
   // Admin: 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users'
   type AdminTab = 'home' | 'admin_dashboard' | 'announcements' | 'recap' | 'edit_absensi' | 'google_sheets' | 'members' | 'manage_users';
-  type PetugasTab = 'attendance' | 'announcements' | 'sessions' | 'recap' | 'members' | 'my_history';
+  type PetugasTab = 'home' | 'attendance' | 'announcements' | 'sessions' | 'recap' | 'members' | 'my_history';
   const [adminTab, setAdminTab] = useState<AdminTab>('home');
-  const [petugasTab, setPetugasTab] = useState<PetugasTab>('attendance');
+  const [petugasTab, setPetugasTab] = useState<PetugasTab>('home');
+  const [isPaperSheetModalOpen, setIsPaperSheetModalOpen] = useState(false);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showSuccessMsg, setShowSuccessMsg] = useState(false);
@@ -971,6 +974,21 @@ export default function App() {
     }
   };
 
+  // Paper Attendance Sheet (Lembar Presensi Kertas) batch update handler
+  const handleSaveAllPaperSheet = async (updatedStudents: Student[]) => {
+    setStudents(updatedStudents);
+    localStorage.setItem('pgt_students', JSON.stringify(updatedStudents));
+    setIsPaperSheetModalOpen(false);
+    triggerToast(`Data ${updatedStudents.length} anggota berhasil diperbarui sesuai presensi kertas! Rekap otomatis disinkronkan.`, 'success');
+
+    try {
+      await saveMultipleStudentsToCloud(updatedStudents);
+    } catch (e: any) {
+      console.warn("Gagal simpan massal ke cloud:", e);
+      triggerToast('Perubahan tersimpan di lokal (Cloud belum tersinkron).', 'warning');
+    }
+  };
+
   // Sessions management handlers
   const handleUpdateSession = async (updatedSession: DailyAttendance) => {
     const sId = updatedSession.id || `sesi-${updatedSession.date}`;
@@ -1064,20 +1082,27 @@ export default function App() {
   }, [students, submittedSessions]);
 
   const sectionLeaderboard = useMemo(() => {
-    const stats: Record<string, { totalPercentage: number; count: number; presentTotal: number }> = {};
+    const stats: Record<string, { totalPercentage: number; count: number; presentTotal: number }> = {
+      Brass: { totalPercentage: 0, count: 0, presentTotal: 0 },
+      Cologuard: { totalPercentage: 0, count: 0, presentTotal: 0 },
+      Battery: { totalPercentage: 0, count: 0, presentTotal: 0 },
+      Pit: { totalPercentage: 0, count: 0, presentTotal: 0 }
+    };
     recapData.forEach(student => {
-      if (!stats[student.section]) {
-        stats[student.section] = { totalPercentage: 0, count: 0, presentTotal: 0 };
+      const sec = student.section || 'Brass';
+      if (!stats[sec]) {
+        stats[sec] = { totalPercentage: 0, count: 0, presentTotal: 0 };
       }
-      stats[student.section].totalPercentage += student.percentage;
-      stats[student.section].count += 1;
-      stats[student.section].presentTotal += student.presentCount;
+      stats[sec].totalPercentage += student.percentage;
+      stats[sec].count += 1;
+      stats[sec].presentTotal += student.presentCount;
     });
 
     return Object.keys(stats).map(section => ({
       section,
       average: stats[section].count > 0 ? Math.round(stats[section].totalPercentage / stats[section].count) : 0,
-      members: stats[section].count
+      members: stats[section].count,
+      presentTotal: stats[section].presentTotal
     })).sort((a, b) => b.average - a.average);
   }, [recapData]);
 
@@ -1265,6 +1290,307 @@ export default function App() {
   const permitCount = filteredStudents.filter(s => todayRecords.find(r => r.studentId === s.id && r.status === 'Izin')).length;
   const absentCount = filteredStudents.filter(s => todayRecords.find(r => r.studentId === s.id && r.status === 'Alfa')).length;
   const attendanceRateToday = recordedCount > 0 ? Math.round((presentCount / recordedCount) * 100) : 0;
+
+  // Shared Modals rendered across both Petugas and Admin portals
+  const renderSharedModals = () => (
+    <>
+      {/* MODAL: ADD STUDENT */}
+      {isAddMemberModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <UserPlus size={20} className="text-purple-400" />
+                Tambah Anggota Pemain Baru
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setIsAddMemberModalOpen(false)} 
+                className="text-slate-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddStudent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                  Nama Lengkap Pemain
+                </label>
+                <input 
+                  type="text" 
+                  required 
+                  value={newStudentName}
+                  onChange={(e) => setNewStudentName(e.target.value)}
+                  placeholder="Contoh: Muhammad Farhan" 
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                    Kelas
+                  </label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={newStudentKelas}
+                    onChange={(e) => setNewStudentKelas(e.target.value)}
+                    placeholder="Contoh: 2F, 3B, 4D" 
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                    Asrama
+                  </label>
+                  <select 
+                    value={newStudentAsrama}
+                    onChange={(e) => setNewStudentAsrama(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  >
+                    <option value="A">Asrama A</option>
+                    <option value="B">Asrama B</option>
+                    <option value="C">Asrama C</option>
+                    <option value="D">Asrama D</option>
+                    <option value="E">Asrama E</option>
+                    <option value="F">Asrama F</option>
+                    <option value="Luar">Luar Asrama</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
+                  Section Instrumen
+                </label>
+                <select 
+                  value={newStudentSection}
+                  onChange={(e) => setNewStudentSection(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="Brass">Brass (Terompet/Mellophone/Baritone/Tuba)</option>
+                  <option value="Cologuard">Cologuard / CG (Bendera & Rifle)</option>
+                  <option value="Battery">Battery (Snare/Tenor/Bass Drum)</option>
+                  <option value="Pit">Pit Instrument (Marimba/Xylophone/Glock)</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2.5 pt-3">
+                <button 
+                  type="button" 
+                  onClick={() => setIsAddMemberModalOpen(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
+                >
+                  Simpan Anggota
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT MEMBER DATA */}
+      <EditMemberModal
+        isOpen={isEditMemberModalOpen}
+        student={editingStudent}
+        onClose={() => {
+          setIsEditMemberModalOpen(false);
+          setEditingStudent(null);
+        }}
+        onSave={handleSaveEditedStudent}
+      />
+
+      {/* MODAL: CONFIRM SUBMIT ATTENDANCE SESSION */}
+      <ConfirmModal
+        isOpen={isSubmitConfirmOpen}
+        title="Konfirmasi Finalisasi & Submit Presensi Resmi"
+        message={`Apakah Anda yakin ingin memfinalisasi data presensi untuk tanggal ${selectedDate} (${currentSessionName})?`}
+        details={[
+          `Tanggal Pelaksanaan: ${selectedDate}`,
+          `Nama Sesi: ${currentSessionName}`,
+          `Disubmit Oleh: ${currentUser?.fullName || 'Petugas Lapangan'} (${currentUser?.role === 'admin' ? 'Administrator' : 'Petugas Lapangan'})`,
+          `Data Hadir: ${currentSession?.records.filter(r => r.status === 'Hadir').length || 0} pemain`,
+          `Total Terabsen: ${currentSession?.records.length || 0} dari ${students.length} anggota marching band`,
+          'Sesi ini akan langsung direkapitulasi ke laporan kehadiran & leaderboard persentase disiplin.',
+          'Data yang telah disubmit tetap dapat dikoreksi atau ditarik kembali sewaktu-waktu oleh Petugas maupun Admin.'
+        ]}
+        confirmText="🚀 Ya, Submit & Finalisasi Presensi"
+        cancelText="Batal (Tetap Simpan sebagai Draf)"
+        onConfirm={handleFinalizeSubmit}
+        onCancel={() => setIsSubmitConfirmOpen(false)}
+      />
+
+      {/* MODAL: CONFIRM DELETE MEMBER / STUDENT */}
+      <ConfirmModal
+        isOpen={Boolean(studentToDelete)}
+        title="Konfirmasi Hapus Data Pemain"
+        message={`Apakah Anda yakin ingin menghapus "${studentToDelete?.name}" dari daftar pemain marching band?`}
+        details={[
+          `Nama Pemain: ${studentToDelete?.name}`,
+          `Section Instrumen: ${studentToDelete?.section}`,
+          `Kelas: ${studentToDelete?.kelas} · Asrama: ${studentToDelete?.asrama}`,
+          'Pemain ini akan dihapus dari daftar master dan sesi presensi berikutnya.',
+          'Catatan: 43 pemain resmi bawaan dapat dipulihkan sewaktu-waktu melalui tombol "Pulihkan 43 Anggota".'
+        ]}
+        confirmText="Ya, Hapus Pemain"
+        cancelText="Batal"
+        isDanger={true}
+        onConfirm={handleConfirmDeleteStudent}
+        onCancel={() => setStudentToDelete(null)}
+      />
+
+      {/* MODAL: CONFIRM RESTORE 43 DEFAULT STUDENTS */}
+      <ConfirmModal
+        isOpen={isRestoreModalOpen}
+        title="Pulihkan Seluruh 43 Anggota Bawaan"
+        message="Apakah Anda yakin ingin memulihkan seluruh 43 anggota bawaan resmi PGT Mu'allimin?"
+        details={[
+          'Daftar lengkap 43 pemain resmi (Brass, Cologuard, Battery, Pit) akan dipulihkan utuh ke master data.',
+          'Pemain baru yang Anda tambahkan sendiri tetap aman dan tidak akan terhapus.',
+          'Riwayat sesi presensi dan catatan kehadiran yang telah tersimpan tetap rapi.'
+        ]}
+        confirmText="Ya, Pulihkan Sekarang"
+        cancelText="Batal"
+        onConfirm={executeRestoreDefaultStudents}
+        onCancel={() => setIsRestoreModalOpen(false)}
+      />
+
+      {/* MODAL: PAPER ATTENDANCE SHEET (INPUT MASSAL SESUAI KERTAS) */}
+      <PaperAttendanceSheetModal
+        isOpen={isPaperSheetModalOpen}
+        students={students}
+        onClose={() => setIsPaperSheetModalOpen(false)}
+        onSaveAll={handleSaveAllPaperSheet}
+        onRestoreDefaults={handleRestoreDefaultStudents}
+        triggerToast={triggerToast}
+      />
+
+      {/* MODAL: CLOUD DATABASE SYNC STATUS & BACKUP */}
+      {showSyncInfoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-emerald-950 border border-emerald-800/60 text-emerald-400">
+                  <Database size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Status Cloud Database</h3>
+                  <p className="text-xs text-slate-400">Penyimpanan Terpusat Firebase Firestore</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowSyncInfoModal(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Firebase Project:</span>
+                  <code className="text-purple-300 font-bold font-mono">{firebaseConfig.projectId}</code>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Status Penyimpanan:</span>
+                  <span className={`inline-flex items-center gap-1.5 font-semibold ${
+                    syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`}></span>
+                    {syncStatus === 'connected' ? 'Cloud Terhubung Real-Time' : 'Penyimpanan Lokal Aktif (0 Delay & Aman)'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Keamanan Data:</span>
+                  <span className="text-emerald-400 font-medium">100% Tersimpan di Perangkat Ini</span>
+                </div>
+              </div>
+
+              {syncStatus !== 'connected' && (
+                <div className="p-3 bg-sky-950/40 border border-sky-800/50 rounded-2xl space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                  <div className="font-bold text-sky-300 flex items-center gap-1.5">
+                    <span>💡 Mengapa status Cloud belum aktif?</span>
+                  </div>
+                  <p>
+                    Database Cloud Firestore di proyek Firebase <code className="text-amber-300 font-mono">absen-7862e</code> belum di-create di Firebase Console. 
+                    Aplikasi saat ini berjalan <strong>sangat cepat & lancar secara lokal</strong> tanpa perlu menunggu cloud.
+                  </p>
+                  <p className="text-slate-400">
+                    Untuk menyambungkan cloud agar sinkron otomatis antar HP/komputer:
+                    <br />1. Buka <strong>console.firebase.google.com</strong> &rarr; pilih <strong>{firebaseConfig.projectId}</strong>
+                    <br />2. Masuk ke <strong>Firestore Database</strong> &rarr; klik <strong>Create database</strong> (Pilih Start in test mode).
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{students.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Pemain / Anggota</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{attendances.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Sesi Absensi</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{systemUsers.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Akun Pengguna</div>
+                </div>
+              </div>
+
+              <p className="text-slate-400 text-[11px] leading-relaxed">
+                Setiap data yang Anda simpan langsung tersimpan permanen di perangkat ini dan tidak akan hilang saat halaman ditutup atau di-refresh.
+              </p>
+            </div>
+
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                disabled={isManualSyncing}
+                onClick={async () => {
+                  setIsManualSyncing(true);
+                  try {
+                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers);
+                    triggerToast(res.message);
+                    if (res.success) {
+                      setShowSyncInfoModal(false);
+                    }
+                  } catch (e: any) {
+                    triggerToast(e?.message || 'Gagal sinkronkan ke cloud.');
+                  } finally {
+                    setIsManualSyncing(false);
+                  }
+                }}
+                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+              >
+                <UploadCloud size={16} className={isManualSyncing ? 'animate-bounce' : ''} />
+                <span>{isManualSyncing ? 'Menyinkronkan ke Cloud...' : 'Simpan & Cadangkan Semua Data Sekarang'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSyncInfoModal(false)}
+                className="w-full py-2.5 rounded-xl border border-slate-800 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   // =========================================================================
   // VIEW 1: UNIFIED SECURE LOGIN SCREEN (SATU JALUR MASUK)
@@ -1493,6 +1819,14 @@ export default function App() {
             <div className="flex items-center gap-1 overflow-x-auto">
               <button
                 type="button"
+                onClick={() => setPetugasTab('home')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'home' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Home size={14} />
+                <span>Beranda</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setPetugasTab('attendance')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
@@ -1551,6 +1885,30 @@ export default function App() {
             </div>
           </div>
 
+          {/* TAB HOME (BERANDA PETUGAS) */}
+          {petugasTab === 'home' && currentUser && (
+            <HomeDashboardTab
+              currentUser={currentUser}
+              students={students}
+              attendances={attendances}
+              announcements={announcements}
+              selectedDate={selectedDate}
+              currentSessionName={currentSessionName}
+              onNavigateTab={(tab) => {
+                if (tab === 'home' || tab === 'attendance' || tab === 'sessions' || tab === 'recap' || tab === 'members' || tab === 'announcements' || tab === 'my_history') {
+                  setPetugasTab(tab as PetugasTab);
+                } else if (tab === 'edit_absensi') {
+                  setPetugasTab('sessions');
+                } else if (tab === 'admin_dashboard') {
+                  setPetugasTab('attendance');
+                }
+              }}
+              onOpenAddMember={() => setIsAddMemberModalOpen(true)}
+              onOpenAddAnnouncement={() => setPetugasTab('announcements')}
+              triggerToast={triggerToast}
+            />
+          )}
+
           {petugasTab === 'attendance' && (
             <div className="space-y-5">
               
@@ -1597,6 +1955,16 @@ export default function App() {
                         Section: {currentUser.assignedSection}
                       </div>
                     )}
+
+                    <button 
+                      type="button"
+                      onClick={() => setIsPaperSheetModalOpen(true)}
+                      className="px-3.5 py-2 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                      title="Input atau koreksi data anggota (nama, kelas, asrama, section) sesuai lembar presensi kertas"
+                    >
+                      <ClipboardList size={14} className="text-amber-400" />
+                      <span>Mode Presensi Kertas</span>
+                    </button>
 
                     <button 
                       onClick={handleMarkAllPresent}
@@ -1662,7 +2030,20 @@ export default function App() {
                           <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
                             <td className="py-3 px-5 text-center text-xs text-slate-500 tabular-nums">{idx + 1}</td>
                             <td className="py-3 px-5">
-                              <div className="font-bold text-slate-100">{student.name}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-100">{student.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingStudent(student);
+                                    setIsEditMemberModalOpen(true);
+                                  }}
+                                  className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                  title={`Edit identitas, kelas, asrama, atau section ${student.name}`}
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                              </div>
                               <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
                                 <span className="text-purple-300 font-semibold">{student.section}</span>
                                 <span>·</span>
@@ -1734,8 +2115,21 @@ export default function App() {
                       <div key={student.id} className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="font-bold text-white text-sm">{student.name}</div>
-                            <div className="text-[11px] text-slate-400">Section {student.section} · Kls {student.kelas}</div>
+                            <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                              <span>{student.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingStudent(student);
+                                  setIsEditMemberModalOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-purple-300"
+                                title="Edit data pemain ini"
+                              >
+                                <Edit3 size={13} />
+                              </button>
+                            </div>
+                            <div className="text-[11px] text-slate-400">Section {student.section} · Kls {student.kelas} · Asr {student.asrama}</div>
                           </div>
                           {record.status ? (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700/50">
@@ -1865,58 +2259,283 @@ export default function App() {
 
           {petugasTab === 'recap' && (
             <div className="space-y-6 pb-20">
+              {/* Leaderboard Section Podium */}
               <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                   <div>
-                    <h2 className="text-xl font-extrabold text-white">Leaderboard & Rekap Disiplin Section</h2>
-                    <p className="text-xs text-slate-400 mt-1">Persentase kehadiran berdasarkan sesi yang telah disubmit resmi.</p>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-bold mb-2">
+                      <Trophy size={14} className="text-amber-400" />
+                      Leaderboard Disiplin Section
+                    </div>
+                    <h2 className="text-xl font-extrabold text-white">Peringkat & Rekapitulasi Presensi Resmi</h2>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Dihitung dari seluruh sesi yang telah disubmit resmi ({submittedSessions.length} sesi terekam).
+                    </p>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={exportToExcel}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg"
-                  >
-                    <Download size={15} />
-                    <span>Export Rekap (CSV)</span>
-                  </button>
+
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button 
+                      type="button"
+                      onClick={() => setIsPaperSheetModalOpen(true)}
+                      className="px-4 py-2.5 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer"
+                      title="Sesuaikan nama, kelas, asrama, dan section sesuai urutan presensi kertas"
+                    >
+                      <ClipboardList size={15} className="text-amber-400" />
+                      <span>Sesuaikan Presensi Kertas</span>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={exportToExcel}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg cursor-pointer"
+                    >
+                      <Download size={15} />
+                      <span>Export Rekap (CSV)</span>
+                    </button>
+                  </div>
                 </div>
 
+                {/* Section Leaderboard Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                   {sectionLeaderboard.map((board, index) => (
                     <div key={board.section} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                      <div className="text-xs text-slate-400 font-bold">#{index + 1} Section {board.section}</div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-400 font-bold">#{index + 1} Section {board.section}</span>
+                        <span className="text-[11px] text-slate-500">{board.members} Anggota</span>
+                      </div>
                       <div className="text-2xl font-black text-amber-300">{board.average}%</div>
-                      <div className="text-[11px] text-slate-500">{board.members} Anggota terdata</div>
+                      <div className="text-[11px] text-slate-400">Total Hadir: {board.presentTotal} orang</div>
                     </div>
                   ))}
+                </div>
+
+                {/* Real-time Adjustment Notice */}
+                <div className="p-3.5 rounded-2xl bg-purple-950/30 border border-purple-800/40 text-xs text-purple-200 flex items-center gap-2.5">
+                  <Sparkles size={16} className="text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Penyesuaian Otomatis:</strong> Setiap ada pengeditan identitas pemain (nama, kelas, asrama, pindah section) maupun koreksi status hadir, angka rekapitulasi dan peringkat section di atas langsung diperbarui otomatis tanpa perlu refresh.
+                  </span>
+                </div>
+              </div>
+
+              {/* Individual Student Discipline Recap Table */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Rekapitulasi Individual Per Anggota ({recapData.length} Pemain)</h3>
+                    <p className="text-xs text-slate-400">Rincian kehadiran, sakit, izin, alfa, dan persentase disiplin.</p>
+                  </div>
+
+                  {/* Section Filter Pills */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                    {sections.map(sec => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => setSelectedSection(sec)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          selectedSection === sec
+                            ? 'bg-purple-600 text-white shadow-md'
+                            : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {sec === 'All' ? 'Semua Section' : sec}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        <th className="py-3 px-4 w-12 text-center">No</th>
+                        <th className="py-3 px-4">Nama Pemain & Data</th>
+                        <th className="py-3 px-3 text-center">Hadir</th>
+                        <th className="py-3 px-3 text-center">Sakit</th>
+                        <th className="py-3 px-3 text-center">Izin</th>
+                        <th className="py-3 px-3 text-center">Alfa</th>
+                        <th className="py-3 px-4 text-center">Persentase</th>
+                        <th className="py-3 px-4">Catatan</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-xs">
+                      {recapData
+                        .filter(s => selectedSection === 'All' || s.section === selectedSection)
+                        .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.kelas.toLowerCase().includes(searchQuery.toLowerCase()))
+                        .map((student, idx) => (
+                          <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="py-3 px-4 text-center text-slate-500 tabular-nums">{idx + 1}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 font-bold text-slate-100">
+                                <span>{student.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const orig = students.find(s => s.id === student.id) || student;
+                                    setEditingStudent(orig);
+                                    setIsEditMemberModalOpen(true);
+                                  }}
+                                  className="p-1 text-slate-500 hover:text-purple-300 hover:bg-slate-800 rounded transition-colors"
+                                  title="Edit data pemain ini"
+                                >
+                                  <Edit3 size={12} />
+                                </button>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-0.5">
+                                <span className="text-purple-300 font-semibold">{student.section}</span> · Kelas {student.kelas} · Asrama {student.asrama}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold text-emerald-400 tabular-nums">{student.hadirCount}</td>
+                            <td className="py-3 px-3 text-center font-bold text-amber-400 tabular-nums">{student.sakitCount}</td>
+                            <td className="py-3 px-3 text-center font-bold text-sky-400 tabular-nums">{student.izinCount}</td>
+                            <td className="py-3 px-3 text-center font-bold text-rose-400 tabular-nums">{student.alfaCount}</td>
+                            <td className="py-3 px-4 text-center">
+                              <span className={`inline-block px-2.5 py-1 rounded-full font-black text-xs tabular-nums ${
+                                student.percentage >= 80 ? 'bg-emerald-950 border border-emerald-700/50 text-emerald-300' :
+                                student.percentage >= 60 ? 'bg-amber-950 border border-amber-700/50 text-amber-300' :
+                                'bg-rose-950 border border-rose-700/50 text-rose-300'
+                              }`}>
+                                {student.percentage}%
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-400 text-[11px] max-w-xs truncate" title={student.notes}>
+                              {student.notes}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           )}
 
           {petugasTab === 'members' && (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-extrabold text-white">Master Data Pemain ({students.length} Anggota)</h2>
-                <button 
-                  type="button"
-                  onClick={() => setIsAddMemberModalOpen(true)}
-                  className="px-3.5 py-2 bg-purple-700 hover:bg-purple-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5"
-                >
-                  <UserPlus size={14} />
-                  <span>Tambah Pemain</span>
-                </button>
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white">Master Data Pemain ({students.length} Anggota)</h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Kelola nama, kelas, asrama, dan section sesuai presensi fisik kertas.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button 
+                    type="button"
+                    onClick={() => setIsPaperSheetModalOpen(true)}
+                    className="px-3.5 py-2.5 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
+                    title="Input atau koreksi data pemain sekaligus sesuai urutan presensi kertas"
+                  >
+                    <ClipboardList size={15} className="text-amber-400" />
+                    <span>Mode Lembar Presensi Kertas</span>
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => setIsAddMemberModalOpen(true)}
+                    className="px-3.5 py-2.5 bg-purple-700 hover:bg-purple-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <UserPlus size={15} />
+                    <span>Tambah Pemain</span>
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={handleRestoreDefaultStudents}
+                    className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Pulihkan seluruh 43 pemain resmi bawaan"
+                  >
+                    <RotateCcw size={14} />
+                    <span>Pulihkan 43 Anggota</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {students.map(s => (
-                  <div key={s.id} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl flex justify-between items-center">
-                    <div>
-                      <div className="font-bold text-white text-sm">{s.name}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">Section <strong className="text-amber-400">{s.section}</strong> · Kelas {s.kelas} · Asrama {s.asrama}</div>
-                    </div>
+              {/* Search & Section Filter Bar */}
+              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-3 border-t border-slate-800">
+                <div className="relative flex-1 max-w-md">
+                  <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input 
+                    type="text" 
+                    placeholder="Cari nama pemain, kelas (mis: 2F), atau asrama..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  {sections.map(sec => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setSelectedSection(sec)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        selectedSection === sec
+                          ? 'bg-purple-600 text-white shadow-md'
+                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      {sec} {sec !== 'All' && `(${students.filter(s => s.section === sec).length})`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Members Cards Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {filteredStudents.length === 0 ? (
+                  <div className="col-span-full py-12 text-center text-slate-500 text-xs">
+                    Tidak ada anggota pemain yang cocok dengan pencarian / filter ini.
                   </div>
-                ))}
+                ) : (
+                  filteredStudents.map(s => (
+                    <div key={s.id} className="p-4 bg-slate-950 border border-slate-800 hover:border-purple-600/40 rounded-2xl flex flex-col justify-between gap-3 transition-colors shadow-sm">
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="font-bold text-white text-sm">{s.name}</div>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            s.section === 'Brass' ? 'bg-amber-950 text-amber-300 border border-amber-800/50' :
+                            s.section === 'Cologuard' ? 'bg-rose-950 text-rose-300 border border-rose-800/50' :
+                            s.section === 'Battery' ? 'bg-sky-950 text-sky-300 border border-sky-800/50' :
+                            'bg-emerald-950 text-emerald-300 border border-emerald-800/50'
+                          }`}>
+                            {s.section}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                          <span>Kelas <strong className="text-slate-300">{s.kelas}</strong></span>
+                          <span>·</span>
+                          <span>Asrama <strong className="text-slate-300">{s.asrama}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingStudent(s);
+                            setIsEditMemberModalOpen(true);
+                          }}
+                          className="flex-1 py-1.5 px-3 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700/40 text-purple-200 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Edit3 size={13} />
+                          <span>Edit Data</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStudent(s.id, s.name)}
+                          className="p-1.5 bg-rose-950/30 hover:bg-rose-900/50 border border-rose-800/40 text-rose-300 hover:text-rose-100 rounded-xl transition-colors cursor-pointer"
+                          title={`Hapus ${s.name}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1980,6 +2599,9 @@ export default function App() {
           </footer>
 
         </main>
+        
+        {/* Render Shared Modals for Petugas (Confirm Submit, Edit Member, Paper Sheet, etc.) */}
+        {renderSharedModals()}
       </div>
     );
   }
@@ -2639,12 +3261,22 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <button 
+                      type="button"
+                      onClick={() => setIsPaperSheetModalOpen(true)}
+                      className="px-3.5 py-2 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                      title="Input atau koreksi data pemain (nama, kelas, asrama, section) sesuai lembar presensi kertas"
+                    >
+                      <ClipboardList size={14} className="text-amber-400" />
+                      <span>Mode Presensi Kertas</span>
+                    </button>
+
                     {currentSession?.isSubmitted ? (
                       <button
                         type="button"
                         onClick={() => handleRevertToDraft(selectedDate)}
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <RotateCcw size={14} />
                         <span>Tarik ke Draf</span>
@@ -2758,8 +3390,21 @@ export default function App() {
                               {idx + 1}
                             </td>
                             <td className="py-3 px-6">
-                              <div className="font-bold text-slate-100 group-hover:text-purple-300 transition-colors">
-                                {student.name}
+                              <div className="flex items-center gap-2">
+                                <div className="font-bold text-slate-100 group-hover:text-purple-300 transition-colors">
+                                  {student.name}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingStudent(student);
+                                    setIsEditMemberModalOpen(true);
+                                  }}
+                                  className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                  title={`Edit nama, kelas, asrama, atau section ${student.name}`}
+                                >
+                                  <Edit3 size={13} />
+                                </button>
                               </div>
                               <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
                                 <span className="bg-slate-800 text-purple-300 px-2 py-0.5 rounded font-medium text-[11px]">
@@ -2836,8 +3481,21 @@ export default function App() {
                       <div key={student.id} className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
                         <div className="flex justify-between items-start">
                           <div>
-                            <div className="font-bold text-white text-sm">{student.name}</div>
-                            <div className="text-[11px] text-slate-400">{student.section} · Kls {student.kelas}</div>
+                            <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                              <span>{student.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingStudent(student);
+                                  setIsEditMemberModalOpen(true);
+                                }}
+                                className="p-1 text-slate-400 hover:text-purple-300"
+                                title="Edit data pemain ini"
+                              >
+                                <Edit3 size={13} />
+                              </button>
+                            </div>
+                            <div className="text-[11px] text-slate-400">Section {student.section} · Kls {student.kelas} · Asr {student.asrama}</div>
                           </div>
                           {record.status ? (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300">
@@ -2966,13 +3624,25 @@ export default function App() {
                     </p>
                   </div>
 
-                  <button 
-                    onClick={exportToExcel}
-                    className="self-start md:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all active:scale-95"
-                  >
-                    <Download size={16} />
-                    <span>Export Rekap (CSV/Excel)</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button 
+                      type="button"
+                      onClick={() => setIsPaperSheetModalOpen(true)}
+                      className="self-start md:self-auto px-4 py-2.5 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer"
+                      title="Sesuaikan nama, kelas, asrama, dan section sesuai urutan presensi kertas"
+                    >
+                      <ClipboardList size={16} className="text-amber-400" />
+                      <span>Sesuaikan Presensi Kertas</span>
+                    </button>
+
+                    <button 
+                      onClick={exportToExcel}
+                      className="self-start md:self-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Download size={16} />
+                      <span>Export Rekap (CSV/Excel)</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Podium Cards */}
@@ -3089,8 +3759,22 @@ export default function App() {
                           return (
                             <tr key={student.id} className={isWarning ? 'bg-rose-950/20 hover:bg-rose-950/30' : 'hover:bg-slate-800/40'}>
                               <td className="py-3.5 px-6">
-                                <div className={`font-bold ${isWarning ? 'text-rose-300' : 'text-slate-100'}`}>
-                                  {student.name}
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-bold ${isWarning ? 'text-rose-300' : 'text-slate-100'}`}>
+                                    {student.name}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const orig = students.find(s => s.id === student.id) || student;
+                                      setEditingStudent(orig);
+                                      setIsEditMemberModalOpen(true);
+                                    }}
+                                    className="p-1 text-slate-500 hover:text-purple-300 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                                    title={`Edit data ${student.name}`}
+                                  >
+                                    <Edit3 size={13} />
+                                  </button>
                                 </div>
                                 <div className="text-xs text-slate-400 mt-0.5">
                                   Kls: {student.kelas} · Asrama: {student.asrama}
@@ -3272,6 +3956,15 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2.5">
+                  <button 
+                    type="button"
+                    onClick={() => setIsPaperSheetModalOpen(true)}
+                    className="px-3.5 py-2.5 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white border border-purple-600/50 font-bold rounded-xl text-xs flex items-center gap-2 transition-all shadow-md cursor-pointer"
+                    title="Input ulang nama, kelas, asrama, dan section sesuai urutan presensi kertas"
+                  >
+                    <ClipboardList size={15} className="text-amber-400" />
+                    <span>Mode Lembar Presensi Kertas</span>
+                  </button>
                   <button 
                     type="button"
                     onClick={handleRestoreDefaultStudents}
@@ -3671,283 +4364,8 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: ADD STUDENT */}
-      {isAddMemberModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 text-slate-100 rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-2xl">
-            <div className="flex justify-between items-center mb-5">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <UserPlus size={20} className="text-purple-400" />
-                Tambah Anggota Pemain Baru
-              </h3>
-              <button onClick={() => setIsAddMemberModalOpen(false)} className="text-slate-400 hover:text-white p-1 rounded-lg">
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddStudent} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
-                  Nama Lengkap Pemain
-                </label>
-                <input 
-                  type="text" 
-                  required 
-                  value={newStudentName}
-                  onChange={(e) => setNewStudentName(e.target.value)}
-                  placeholder="Contoh: Muhammad Farhan" 
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
-                    Kelas
-                  </label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={newStudentKelas}
-                    onChange={(e) => setNewStudentKelas(e.target.value)}
-                    placeholder="Contoh: 2F, 3B, 4D" 
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
-                    Asrama
-                  </label>
-                  <select 
-                    value={newStudentAsrama}
-                    onChange={(e) => setNewStudentAsrama(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  >
-                    <option value="A">Asrama A</option>
-                    <option value="B">Asrama B</option>
-                    <option value="C">Asrama C</option>
-                    <option value="D">Asrama D</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1 uppercase tracking-wider">
-                  Section Instrumen
-                </label>
-                <select 
-                  value={newStudentSection}
-                  onChange={(e) => setNewStudentSection(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="Brass">Brass (Terompet/Mellophone/Baritone/Tuba)</option>
-                  <option value="Cologuard">Cologuard / CG (Bendera & Rifle)</option>
-                  <option value="Battery">Battery (Snare/Tenor/Bass Drum)</option>
-                  <option value="Pit">Pit Instrument (Marimba/Xylophone/Glock)</option>
-                </select>
-              </div>
-
-              <div className="flex gap-2.5 pt-3">
-                <button 
-                  type="button" 
-                  onClick={() => setIsAddMemberModalOpen(false)}
-                  className="flex-1 py-2.5 px-4 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors"
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit" 
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white text-xs font-bold transition-all shadow-md"
-                >
-                  Simpan Anggota
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: EDIT MEMBER DATA */}
-      <EditMemberModal
-        isOpen={isEditMemberModalOpen}
-        student={editingStudent}
-        onClose={() => {
-          setIsEditMemberModalOpen(false);
-          setEditingStudent(null);
-        }}
-        onSave={handleSaveEditedStudent}
-      />
-
-      {/* MODAL: CONFIRM SUBMIT ATTENDANCE SESSION */}
-      <ConfirmModal
-        isOpen={isSubmitConfirmOpen}
-        title="Konfirmasi Finalisasi & Submit Presensi Resmi"
-        message={`Apakah Anda yakin ingin memfinalisasi data presensi untuk tanggal ${selectedDate} (${currentSessionName})?`}
-        details={[
-          `Tanggal Pelaksanaan: ${selectedDate}`,
-          `Nama Sesi: ${currentSessionName}`,
-          `Data Hadir: ${currentSession?.records.filter(r => r.status === 'Hadir').length || 0} pemain`,
-          `Total Terabsen: ${currentSession?.records.length || 0} dari ${students.length} anggota marching band`,
-          'Sesi ini akan langsung direkapitulasi ke laporan kehadiran & leaderboard persentase disiplin.',
-          'Data yang telah disubmit tetap dapat dikoreksi atau ditarik kembali sewaktu-waktu oleh Admin.'
-        ]}
-        confirmText="🚀 Ya, Submit & Finalisasi Presensi"
-        cancelText="Batal (Tetap Simpan sebagai Draf)"
-        onConfirm={handleFinalizeSubmit}
-        onCancel={() => setIsSubmitConfirmOpen(false)}
-      />
-
-      {/* MODAL: CONFIRM DELETE MEMBER / STUDENT */}
-      <ConfirmModal
-        isOpen={Boolean(studentToDelete)}
-        title="Konfirmasi Hapus Data Pemain"
-        message={`Apakah Anda yakin ingin menghapus "${studentToDelete?.name}" dari daftar pemain marching band?`}
-        details={[
-          `Nama Pemain: ${studentToDelete?.name}`,
-          `Section Instrumen: ${studentToDelete?.section}`,
-          `Kelas: ${studentToDelete?.kelas} · Asrama: ${studentToDelete?.asrama}`,
-          'Pemain ini akan dihapus dari daftar master dan sesi presensi berikutnya.',
-          'Catatan: 43 pemain resmi bawaan dapat dipulihkan sewaktu-waktu melalui tombol "Pulihkan 43 Anggota".'
-        ]}
-        confirmText="Ya, Hapus Pemain"
-        cancelText="Batal"
-        isDanger={true}
-        onConfirm={handleConfirmDeleteStudent}
-        onCancel={() => setStudentToDelete(null)}
-      />
-
-      {/* MODAL: CONFIRM RESTORE 43 DEFAULT STUDENTS */}
-      <ConfirmModal
-        isOpen={isRestoreModalOpen}
-        title="Pulihkan Seluruh 43 Anggota Bawaan"
-        message="Apakah Anda yakin ingin memulihkan seluruh 43 anggota bawaan resmi PGT Mu'allimin?"
-        details={[
-          'Daftar lengkap 43 pemain resmi (Brass, Cologuard, Battery, Pit) akan dipulihkan utuh ke master data.',
-          'Pemain baru yang Anda tambahkan sendiri tetap aman dan tidak akan terhapus.',
-          'Riwayat sesi presensi dan catatan kehadiran yang telah tersimpan tetap rapi.'
-        ]}
-        confirmText="Ya, Pulihkan Sekarang"
-        cancelText="Batal"
-        onConfirm={executeRestoreDefaultStudents}
-        onCancel={() => setIsRestoreModalOpen(false)}
-      />
-
-      {/* MODAL: CLOUD DATABASE SYNC STATUS & BACKUP */}
-      {showSyncInfoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2.5 rounded-2xl bg-emerald-950 border border-emerald-800/60 text-emerald-400">
-                  <Database size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Status Cloud Database</h3>
-                  <p className="text-xs text-slate-400">Penyimpanan Terpusat Firebase Firestore</p>
-                </div>
-              </div>
-              <button 
-                type="button"
-                onClick={() => setShowSyncInfoModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Firebase Project:</span>
-                  <code className="text-purple-300 font-bold font-mono">{firebaseConfig.projectId}</code>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Status Penyimpanan:</span>
-                  <span className={`inline-flex items-center gap-1.5 font-semibold ${
-                    syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`}></span>
-                    {syncStatus === 'connected' ? 'Cloud Terhubung Real-Time' : 'Penyimpanan Lokal Aktif (0 Delay & Aman)'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Keamanan Data:</span>
-                  <span className="text-emerald-400 font-medium">100% Tersimpan di Perangkat Ini</span>
-                </div>
-              </div>
-
-              {syncStatus !== 'connected' && (
-                <div className="p-3 bg-sky-950/40 border border-sky-800/50 rounded-2xl space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
-                  <div className="font-bold text-sky-300 flex items-center gap-1.5">
-                    <span>💡 Mengapa status Cloud belum aktif?</span>
-                  </div>
-                  <p>
-                    Database Cloud Firestore di proyek Firebase <code className="text-amber-300 font-mono">absen-7862e</code> belum di-create di Firebase Console. 
-                    Aplikasi saat ini berjalan <strong>sangat cepat & lancar secara lokal</strong> tanpa perlu menunggu cloud.
-                  </p>
-                  <p className="text-slate-400">
-                    Untuk menyambungkan cloud agar sinkron otomatis antar HP/komputer:
-                    <br />1. Buka <strong>console.firebase.google.com</strong> &rarr; pilih <strong>{firebaseConfig.projectId}</strong>
-                    <br />2. Masuk ke <strong>Firestore Database</strong> &rarr; klik <strong>Create database</strong> (Pilih Start in test mode).
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                  <div className="text-lg font-black text-white">{students.length}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Pemain / Anggota</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                  <div className="text-lg font-black text-white">{attendances.length}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Sesi Absensi</div>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
-                  <div className="text-lg font-black text-white">{systemUsers.length}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Akun Pengguna</div>
-                </div>
-              </div>
-
-              <p className="text-slate-400 text-[11px] leading-relaxed">
-                Setiap data yang Anda simpan langsung tersimpan permanen di perangkat ini dan tidak akan hilang saat halaman ditutup atau di-refresh.
-              </p>
-            </div>
-
-            <div className="pt-2 space-y-2">
-              <button
-                type="button"
-                disabled={isManualSyncing}
-                onClick={async () => {
-                  setIsManualSyncing(true);
-                  try {
-                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers);
-                    triggerToast(res.message);
-                    if (res.success) {
-                      setShowSyncInfoModal(false);
-                    }
-                  } catch (e: any) {
-                    triggerToast(e?.message || 'Gagal sinkronkan ke cloud.');
-                  } finally {
-                    setIsManualSyncing(false);
-                  }
-                }}
-                className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all cursor-pointer"
-              >
-                <UploadCloud size={16} className={isManualSyncing ? 'animate-bounce' : ''} />
-                <span>{isManualSyncing ? 'Menyinkronkan ke Cloud...' : 'Simpan & Cadangkan Semua Data Sekarang'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowSyncInfoModal(false)}
-                className="w-full py-2.5 rounded-xl border border-slate-800 hover:bg-slate-800 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* SHARED MODALS */}
+      {renderSharedModals()}
 
     </div>
   );
