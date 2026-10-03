@@ -18,7 +18,9 @@ import {
   MapPin,
   Plus,
   Music,
-  ChevronRight
+  ChevronRight,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { Student, DailyAttendance, SystemUser } from '../App';
 import { Announcement } from '../services/db';
@@ -291,13 +293,19 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
             {scheduledSessions.slice(0, 3).map((session) => {
               const isSubmitted = session.isSubmitted !== false;
+              const isClosed = session.isClosed === true;
+              const isExpired = session.date < todayStr && !isClosed;
               const isToday = session.date === todayStr;
 
               return (
                 <div
                   key={session.id || session.date}
                   className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-md ${
-                    isToday
+                    isClosed
+                      ? 'bg-slate-950/80 border-slate-800 opacity-80'
+                      : isExpired
+                      ? 'bg-rose-950/20 border-rose-800/40'
+                      : isToday
                       ? 'bg-purple-950/40 border-purple-500 hover:border-purple-400'
                       : 'bg-slate-950 border-slate-800 hover:border-purple-600/50'
                   }`}
@@ -308,13 +316,21 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                         <Calendar size={11} /> {session.date} {isToday ? '(Hari Ini)' : ''}
                       </span>
 
-                      {isSubmitted ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                          Ter-submit
+                      {isClosed ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+                          <Lock size={10} className="text-amber-400" /> Selesai / Ditutup
+                        </span>
+                      ) : isExpired ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                          <Clock size={10} /> Expired
+                        </span>
+                      ) : isSubmitted ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                          <CheckCircle2 size={10} /> Ter-submit
                         </span>
                       ) : (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                          Draf
+                          Draf Aktif
                         </span>
                       )}
                     </div>
@@ -350,7 +366,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       onClick={() => handleSelectSessionDate(session.date)}
                       className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <span>Presensi Sesi Ini</span>
+                      <span>{isClosed ? 'Lihat Presensi' : 'Presensi Sesi Ini'}</span>
                       <ArrowRight size={13} />
                     </button>
 
@@ -371,6 +387,76 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* 3.5 ARAHAN PETUGAS LAPANGAN SAAT SESI LATIHAN DITAMBAHKAN */}
+      {!isAdmin && (
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 text-[11px] font-bold mb-1">
+                <Sparkles size={12} className="text-amber-400" /> Panduan & Arahan Petugas Lapangan
+              </div>
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                Alur Kerja & Panduan Submit Presensi Sesi Latihan
+              </h2>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {scheduledSessions.length > 0
+                  ? `Admin telah menjadwalkan ${scheduledSessions.length} sesi latihan resmi. Ikuti alur submit berikut:`
+                  : 'Ikuti tahapan berikut setiap kali Administrator menjadwalkan sesi latihan korps:'}
+              </p>
+            </div>
+
+            {scheduledSessions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const targetDate = scheduledSessions[0]?.date || todayStr;
+                  handleSelectSessionDate(targetDate);
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
+              >
+                <span>Buka Sesi Terdekat ({scheduledSessions[0]?.date})</span>
+                <ArrowRight size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">1</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Pilih Sesi</span>
+              </div>
+              <h4 className="font-extrabold text-sm text-white">Buka Sesi Latihan</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Pilih sesi latihan resmi yang telah dijadwalkan oleh Admin dari menu dropdown atau klik <em>"Presensi Sesi Ini"</em> pada daftar sesi.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">2</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Isi Presensi</span>
+              </div>
+              <h4 className="font-extrabold text-sm text-white">Tandai Status Pemain</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Tandai kehadiran (Hadir, Sakit, Izin, Alfa). Gunakan tombol <em>"Hadir Semua"</em> atau <em>"Mode Presensi Kertas"</em> untuk efisiensi.
+              </p>
+            </div>
+
+            <div className="p-4 bg-emerald-950/20 border border-emerald-800/60 rounded-2xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="w-6 h-6 rounded-xl bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-black flex items-center justify-center">3</span>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase">Submit Resmi</span>
+              </div>
+              <h4 className="font-extrabold text-sm text-emerald-300">Finalisasi & Submit</h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Klik tombol <strong>"Submit Presensi Sesi Ini"</strong> di bawah tabel dan konfirmasi. Data otomatis masuk ke Rekapitulasi & Leaderboard Disiplin Korps.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4. QUICK NAVIGATION TILES (MENU PINTAS UTAMA) */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">

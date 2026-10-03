@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Calendar, Clock, UserCheck, Edit3, Trash2, CheckCircle2, 
-  AlertCircle, ChevronRight, Save, X, RotateCcw, Send, Shield, Sparkles, Filter
+  AlertCircle, ChevronRight, Save, X, RotateCcw, Send, Shield, Sparkles, Filter,
+  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -28,6 +29,9 @@ export interface AttendanceSession {
   targetSection?: string;
   description?: string;
   isScheduled?: boolean;
+  isClosed?: boolean;
+  closedAt?: string | null;
+  closedBy?: string | null;
   isSubmitted?: boolean;
   submittedAt?: string | null;
   submittedBy?: string | null;
@@ -42,7 +46,7 @@ interface AttendanceSessionsTabProps {
   onDeleteSession: (sessionIdentifier: string) => void;
   onSubmitSession: (sessionIdentifier: string) => void;
   onOpenScheduleModal?: () => void;
-  triggerToast: (msg: string) => void;
+  triggerToast: (msg: string, type?: 'success' | 'warning' | 'info') => void;
 }
 
 export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
@@ -55,7 +59,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   onOpenScheduleModal,
   triggerToast
 }) => {
-  const [filterType, setFilterType] = useState<'all' | 'submitted' | 'draft'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'active' | 'closed' | 'expired' | 'draft'>('all');
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionData, setEditSessionData] = useState<AttendanceSession | null>(null);
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
@@ -64,11 +68,24 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
+  // Close All Expired Confirmation Modal
+  const [isCloseAllExpiredModalOpen, setIsCloseAllExpiredModalOpen] = useState(false);
+  // Close All Finished Confirmation Modal
+  const [isCloseAllFinishedModalOpen, setIsCloseAllFinishedModalOpen] = useState(false);
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
   // Filter sessions
   const filteredSessions = sessions.filter(s => {
+    const isClosed = s.isClosed === true;
+    const isExpired = s.date < todayStr && !isClosed;
     const isSubmitted = s.isSubmitted !== false;
-    if (filterType === 'submitted' && !isSubmitted) return false;
+
+    if (filterType === 'active' && (isClosed || isExpired)) return false;
+    if (filterType === 'closed' && !isClosed) return false;
+    if (filterType === 'expired' && !isExpired) return false;
     if (filterType === 'draft' && isSubmitted) return false;
+
     if (sessionSearchQuery) {
       const matchDate = s.date.includes(sessionSearchQuery);
       const matchName = (s.sessionName || '').toLowerCase().includes(sessionSearchQuery.toLowerCase());
@@ -77,6 +94,9 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
     }
     return true;
   });
+
+  const expiredCount = sessions.filter(s => s.date < todayStr && !s.isClosed).length;
+  const finishedUnclosedCount = sessions.filter(s => s.isSubmitted !== false && !s.isClosed).length;
 
   const handleStartEdit = (session: AttendanceSession) => {
     const sessionId = session.id || `sesi-${session.date}`;
@@ -94,7 +114,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
     onUpdateSession(editSessionData);
     setEditingSessionId(null);
     setEditSessionData(null);
-    triggerToast(`Data presensi tanggal ${editSessionData.date} berhasil diperbarui!`);
+    triggerToast(`Data presensi tanggal ${editSessionData.date} berhasil diperbarui!`, 'success');
   };
 
   const handleStatusChangeInEdit = (studentId: number, status: string) => {
@@ -133,6 +153,63 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
     });
   };
 
+  const handleToggleCloseSession = (session: AttendanceSession) => {
+    const isCurrentlyClosed = session.isClosed === true;
+    const nowStr = new Date().toLocaleString('id-ID');
+    const updated: AttendanceSession = {
+      ...session,
+      id: session.id || `sesi-${session.date}`,
+      isClosed: !isCurrentlyClosed,
+      closedAt: !isCurrentlyClosed ? nowStr : null,
+      closedBy: !isCurrentlyClosed ? currentUserName : null
+    };
+    onUpdateSession(updated);
+    triggerToast(
+      !isCurrentlyClosed
+        ? `Sesi ${session.date} (${session.sessionName || 'Latihan'}) resmi DITUTUP / SELESAI.`
+        : `Sesi ${session.date} DIBUKA KEMBALI untuk pengisian.`,
+      'info'
+    );
+  };
+
+  const handleCloseAllExpiredConfirm = () => {
+    const nowStr = new Date().toLocaleString('id-ID');
+    let closedCount = 0;
+    sessions.forEach(s => {
+      if (s.date < todayStr && !s.isClosed) {
+        closedCount++;
+        onUpdateSession({
+          ...s,
+          id: s.id || `sesi-${s.date}`,
+          isClosed: true,
+          closedAt: nowStr,
+          closedBy: currentUserName
+        });
+      }
+    });
+    setIsCloseAllExpiredModalOpen(false);
+    triggerToast(`Berhasil menutup ${closedCount} sesi latihan yang telah expired/lewat!`, 'success');
+  };
+
+  const handleCloseAllFinishedConfirm = () => {
+    const nowStr = new Date().toLocaleString('id-ID');
+    let closedCount = 0;
+    sessions.forEach(s => {
+      if (s.isSubmitted !== false && !s.isClosed) {
+        closedCount++;
+        onUpdateSession({
+          ...s,
+          id: s.id || `sesi-${s.date}`,
+          isClosed: true,
+          closedAt: nowStr,
+          closedBy: currentUserName
+        });
+      }
+    });
+    setIsCloseAllFinishedModalOpen(false);
+    triggerToast(`Berhasil mengunci & menutup ${closedCount} sesi yang telah ter-submit!`, 'success');
+  };
+
   const handleToggleDraftSubmitted = (session: AttendanceSession) => {
     const isSubmitted = session.isSubmitted !== false;
     const updated: AttendanceSession = {
@@ -146,7 +223,8 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
     triggerToast(
       !isSubmitted
         ? `Sesi ${session.date} resmi disubmit ke Rekapitulasi!`
-        : `Sesi ${session.date} dikembalikan ke status Draf (tidak masuk rekap).`
+        : `Sesi ${session.date} dikembalikan ke status Draf (tidak masuk rekap).`,
+      'info'
     );
   };
 
@@ -162,63 +240,127 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   return (
     <div className="space-y-6 pb-20 md:pb-6 text-left">
       {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-purple-900/40 text-purple-300 border border-purple-700/40 text-[11px] font-semibold mb-2">
-            <Edit3 size={12} className="text-amber-400" /> Riwayat & Koreksi Presensi
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-purple-900/40 text-purple-300 border border-purple-700/40 text-[11px] font-semibold mb-2">
+              <Edit3 size={12} className="text-amber-400" /> Riwayat, Koreksi & Penutupan Sesi
+            </div>
+            <h2 className="text-2xl font-black text-white tracking-tight">
+              Kelola & Tutup Sesi Latihan ({sessions.length} Sesi)
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Pantau status sesi, tutup sesi yang expired atau selesai, koreksi absensi, atau lakukan submit resmi ke laporan korps.
+            </p>
           </div>
-          <h2 className="text-2xl font-black text-white tracking-tight">
-            Koreksi & Edit Data Absensi ({sessions.length} Sesi)
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Petugas Lapangan & Administrator dapat memfinalisasi submit presensi resmi, mengubah status hadir, catatan halangan, atau mengembalikan sesi ke status draf.
-          </p>
+
+          {/* Action Buttons: Batch Close & Schedule */}
+          <div className="flex flex-wrap items-center gap-2">
+            {expiredCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsCloseAllExpiredModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                title="Tutup semua sesi yang tanggalnya sudah lewat"
+              >
+                <Lock size={13} className="text-rose-400" />
+                <span>Tutup {expiredCount} Sesi Expired</span>
+              </button>
+            )}
+
+            {finishedUnclosedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsCloseAllFinishedModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                title="Tutup semua sesi yang sudah disubmit"
+              >
+                <Lock size={13} className="text-indigo-400" />
+                <span>Tutup {finishedUnclosedCount} Sesi Selesai</span>
+              </button>
+            )}
+
+            {onOpenScheduleModal && (
+              <button
+                type="button"
+                onClick={onOpenScheduleModal}
+                className="px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>+ Jadwalkan Sesi Baru</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filter Pills & Schedule Button */}
-        <div className="flex flex-wrap items-center gap-2">
-          {onOpenScheduleModal && (
+        {/* Filter Pills & Search */}
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-3 border-t border-slate-800">
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto">
             <button
               type="button"
-              onClick={onOpenScheduleModal}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer"
+              onClick={() => setFilterType('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                filterType === 'all'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
             >
-              + Jadwalkan Sesi
+              Semua ({sessions.length})
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setFilterType('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filterType === 'all'
-                ? 'bg-purple-600 text-white shadow-md'
-                : 'bg-slate-950 text-slate-400 border border-slate-800'
-            }`}
-          >
-            Semua ({sessions.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterType('submitted')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filterType === 'submitted'
-                ? 'bg-emerald-600 text-white shadow-md'
-                : 'bg-slate-950 text-slate-400 border border-slate-800'
-            }`}
-          >
-            Ter-submit ({sessions.filter(s => s.isSubmitted !== false).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilterType('draft')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              filterType === 'draft'
-                ? 'bg-amber-600 text-white shadow-md'
-                : 'bg-slate-950 text-slate-400 border border-slate-800'
-            }`}
-          >
-            Draf ({sessions.filter(s => s.isSubmitted === false).length})
-          </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('active')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                filterType === 'active'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
+            >
+              Sesi Aktif ({sessions.filter(s => !s.isClosed && s.date >= todayStr).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('closed')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                filterType === 'closed'
+                  ? 'bg-slate-700 text-white shadow-md'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
+            >
+              Ditutup / Selesai ({sessions.filter(s => s.isClosed).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('expired')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                filterType === 'expired'
+                  ? 'bg-rose-600 text-white shadow-md'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
+            >
+              Expired / Lewat ({sessions.filter(s => s.date < todayStr && !s.isClosed).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('draft')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                filterType === 'draft'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+              }`}
+            >
+              Draf ({sessions.filter(s => s.isSubmitted === false).length})
+            </button>
+          </div>
+
+          <div className="w-full sm:w-64">
+            <input
+              type="text"
+              placeholder="Cari sesi / tanggal / petugas..."
+              value={sessionSearchQuery}
+              onChange={(e) => setSessionSearchQuery(e.target.value)}
+              className="w-full text-xs px-3.5 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+          </div>
         </div>
       </div>
 
@@ -246,14 +388,14 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                   setEditingSessionId(null);
                   setEditSessionData(null);
                 }}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={handleSaveEditedSession}
-                className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95"
+                className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
               >
                 <Save size={16} />
                 <span>Simpan Perubahan Koreksi</span>
@@ -371,55 +513,87 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
       {/* Sessions List Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredSessions.length === 0 ? (
-          <div className="col-span-full bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center">
-            <AlertCircle size={36} className="mx-auto text-slate-500 mb-3" />
-            <h4 className="text-base font-bold text-white">Belum Ada Sesi Presensi yang Tercatat</h4>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Silakan lakukan presensi pada tab "Presensi Harian" lalu submit untuk merekam sesi ke dalam sistem.
+          <div className="col-span-full bg-slate-900 border border-slate-800 rounded-3xl p-10 text-center space-y-2">
+            <AlertCircle size={36} className="mx-auto text-slate-500" />
+            <h4 className="text-base font-bold text-white">Tidak Ada Sesi yang Sesuai dengan Filter</h4>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              Gunakan tombol "Semua" atau jadwalkan sesi baru melalui tombol di atas.
             </p>
           </div>
         ) : (
           filteredSessions.map(session => {
             const sId = session.id || `sesi-${session.date}`;
             const isSubmitted = session.isSubmitted !== false;
+            const isClosed = session.isClosed === true;
+            const isExpired = session.date < todayStr && !isClosed;
 
             const hadirCount = session.records.filter(r => r.status === 'Hadir').length;
             const sakitCount = session.records.filter(r => r.status === 'Sakit').length;
             const izinCount = session.records.filter(r => r.status === 'Izin').length;
             const alfaCount = session.records.filter(r => r.status === 'Alfa').length;
-            const totalRecorded = session.records.length;
 
             return (
               <div
                 key={sId}
-                className={`bg-slate-900 border rounded-3xl p-5 shadow-xl transition-all ${
-                  isSubmitted
-                    ? 'border-slate-800 hover:border-emerald-500/40'
-                    : 'border-amber-500/40 bg-slate-900/95 shadow-amber-950/20'
+                className={`border rounded-3xl p-5 shadow-xl transition-all ${
+                  isClosed
+                    ? 'bg-slate-950 border-slate-800 opacity-90'
+                    : isExpired
+                    ? 'bg-rose-950/20 border-rose-800/40'
+                    : isSubmitted
+                    ? 'bg-slate-900 border-slate-800 hover:border-emerald-500/40'
+                    : 'bg-slate-900 border-amber-500/40 shadow-amber-950/20'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-base font-extrabold text-white">
                         {session.sessionName || 'Latihan Rutin'}
                       </span>
-                      {isSubmitted ? (
+
+                      {/* Status Badges */}
+                      {isClosed ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-bold flex items-center gap-1">
+                          <Lock size={10} className="text-amber-400" /> Selesai & Ditutup
+                        </span>
+                      ) : isExpired ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-bold flex items-center gap-1">
+                          <Clock size={10} /> Expired (Belum Ditutup)
+                        </span>
+                      ) : isSubmitted ? (
                         <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
                           <CheckCircle2 size={11} /> Ter-submit Resmi
                         </span>
                       ) : (
                         <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1">
-                          <AlertCircle size={11} /> Draf (Belum Disubmit)
+                          <AlertCircle size={11} /> Draf Aktif
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                      <Calendar size={13} className="text-purple-400" />
-                      <span>{session.date}</span>
+
+                    <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-1">
+                        <Calendar size={13} className="text-purple-400" />
+                        <span>{session.date}</span>
+                      </span>
                       <span>·</span>
-                      <UserCheck size={13} className="text-indigo-400" />
-                      <span>{session.submittedBy || 'Petugas Lapangan'}</span>
+                      <span className="flex items-center gap-1">
+                        <UserCheck size={13} className="text-indigo-400" />
+                        <span>{session.submittedBy || 'Petugas Lapangan'}</span>
+                      </span>
+                      {session.scheduledTime && (
+                        <>
+                          <span>·</span>
+                          <span className="text-slate-300">{session.scheduledTime}</span>
+                        </>
+                      )}
+                      {session.location && (
+                        <>
+                          <span>·</span>
+                          <span className="text-amber-300">{session.location}</span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -430,7 +604,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                       setSessionToDelete(session);
                       setIsDeleteModalOpen(true);
                     }}
-                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors"
+                    className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
                     title="Hapus Sesi"
                   >
                     <Trash2 size={16} />
@@ -458,32 +632,62 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                 </div>
 
                 <div className="text-[11px] text-slate-400 mb-4">
-                  {isSubmitted ? (
-                    <span className="text-slate-400">
-                      Disubmit pada: <span className="text-slate-200">{session.submittedAt || session.date}</span>
+                  {isClosed ? (
+                    <span className="text-slate-400 flex items-center gap-1.5">
+                      <Lock size={12} className="text-amber-400" />
+                      Sesi ditutup & dikunci pada <strong className="text-slate-200">{session.closedAt || session.date}</strong> oleh <strong className="text-purple-300">{session.closedBy || 'Admin'}</strong>
+                    </span>
+                  ) : isSubmitted ? (
+                    <span className="text-emerald-400/90 flex items-center gap-1.5">
+                      <CheckCircle2 size={12} />
+                      Disubmit pada: <span className="text-slate-200">{session.submittedAt || session.date}</span> (Bisa ditutup/dikunci untuk arsip)
                     </span>
                   ) : (
                     <span className="text-amber-400 font-medium">
-                      ⚠️ Data ini belum masuk ke Rekapitulasi & Leaderboard sebelum Anda menekan tombol Submit.
+                      ⚠️ Status Draf. {isExpired ? 'Sesi telah lewat tanggal — disarankan segera ditutup.' : 'Belum difinalisasi ke rekapitulasi.'}
                     </span>
                   )}
                 </div>
 
                 {/* Button actions */}
-                <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
                   <button
                     type="button"
                     onClick={() => handleStartEdit(session)}
-                    className="flex-1 py-2 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 py-2 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <Edit3 size={14} />
-                    <span>Edit & Koreksi Data</span>
+                    <span>Edit Data</span>
+                  </button>
+
+                  {/* Toggle Close / Reopen Session Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleCloseSession(session)}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      isClosed
+                        ? 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
+                        : 'bg-rose-950/60 hover:bg-rose-900/80 text-rose-200 border border-rose-800/60'
+                    }`}
+                    title={isClosed ? 'Buka kembali sesi ini' : 'Tutup sesi ini (kunci & selesaikan)'}
+                  >
+                    {isClosed ? (
+                      <>
+                        <Unlock size={14} />
+                        <span>Buka Sesi</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={14} />
+                        <span>Tutup Sesi</span>
+                      </>
+                    )}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleToggleDraftSubmitted(session)}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors ${
+                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
                       isSubmitted
                         ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
@@ -492,12 +696,12 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                     {isSubmitted ? (
                       <>
                         <RotateCcw size={14} />
-                        <span>Tarik ke Draf</span>
+                        <span>Tarik Draf</span>
                       </>
                     ) : (
                       <>
                         <Send size={14} />
-                        <span>Submit Resmi</span>
+                        <span>Submit</span>
                       </>
                     )}
                   </button>
@@ -521,6 +725,36 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
           setIsDeleteModalOpen(false);
           setSessionToDelete(null);
         }}
+      />
+
+      {/* Close All Expired Sessions Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isCloseAllExpiredModalOpen}
+        title="Tutup Seluruh Sesi yang Expired / Lewat Tanggal?"
+        message={`Apakah Anda yakin ingin menutup sekaligus ${expiredCount} sesi latihan yang tanggalnya telah lewat?`}
+        details={[
+          `${expiredCount} sesi lampau yang belum ditutup akan dikunci secara resmi.`,
+          'Sesi yang ditutup tetap dapat dibuka kembali secara individual jika diperlukan koreksi.'
+        ]}
+        confirmText="🔒 Ya, Tutup Sesi Expired"
+        cancelText="Batal"
+        onConfirm={handleCloseAllExpiredConfirm}
+        onCancel={() => setIsCloseAllExpiredModalOpen(false)}
+      />
+
+      {/* Close All Finished Sessions Confirmation Modal */}
+      <ConfirmModal
+        isOpen={isCloseAllFinishedModalOpen}
+        title="Tutup Seluruh Sesi yang Selesai Disubmit?"
+        message={`Apakah Anda yakin ingin menutup & mengunci ${finishedUnclosedCount} sesi yang telah ter-submit?`}
+        details={[
+          'Sesi yang telah disubmit akan difinalisasi sehingga tidak berubah tanpa sengaja.',
+          'Data tetap tercatat utuh di rekapitulasi dan dapat dibuka kembali kapan saja.'
+        ]}
+        confirmText="🔒 Ya, Tutup Sesi Selesai"
+        cancelText="Batal"
+        onConfirm={handleCloseAllFinishedConfirm}
+        onCancel={() => setIsCloseAllFinishedModalOpen(false)}
       />
     </div>
   );

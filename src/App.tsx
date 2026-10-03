@@ -16,7 +16,8 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { HomeDashboardTab } from './components/HomeDashboardTab';
 import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
-import { ScheduleSessionModal } from './components/ScheduleSessionModal';
+import { ScheduleSessionModal, BatchScheduleData } from './components/ScheduleSessionModal';
+import { OfficerSubmissionGuide } from './components/OfficerSubmissionGuide';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -79,6 +80,9 @@ export interface DailyAttendance {
   targetSection?: string;
   description?: string;
   isScheduled?: boolean;
+  isClosed?: boolean;
+  closedAt?: string | null;
+  closedBy?: string | null;
   isSubmitted?: boolean;
   submittedAt?: string | null;
   submittedBy?: string | null;
@@ -559,6 +563,40 @@ export default function App() {
       setCurrentSessionName(existing.sessionName);
     }
   }, [selectedDate, attendances]);
+
+  // Otomatisasi penutupan sesi yang sudah lewat tanggalnya (Expired Auto-Close)
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const expiredUnclosed = attendances.filter(a => a.date < todayStr && !a.isClosed);
+    if (expiredUnclosed.length > 0) {
+      const nowStr = new Date().toLocaleString('id-ID');
+      setAttendances(prev => {
+        const nextList = prev.map(a => {
+          if (a.date < todayStr && !a.isClosed) {
+            return {
+              ...a,
+              isClosed: true,
+              closedAt: a.closedAt || nowStr,
+              closedBy: a.closedBy || 'Sistem (Otomatis Expired)'
+            };
+          }
+          return a;
+        });
+        localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+        return nextList;
+      });
+
+      // Background cloud sync
+      expiredUnclosed.forEach(s => {
+        saveAttendanceToCloud({
+          ...s,
+          isClosed: true,
+          closedAt: s.closedAt || nowStr,
+          closedBy: s.closedBy || 'Sistem (Otomatis Expired)'
+        }).catch(() => {});
+      });
+    }
+  }, [attendances.length]);
 
   // Local Storage Synchronizations
   useEffect(() => {
@@ -1113,6 +1151,86 @@ export default function App() {
     triggerToast(`Jadwal latihan "${scheduleData.sessionName}" tanggal ${scheduleData.date} resmi diterbitkan!`, 'success');
   };
 
+  const handleSaveBatchSchedule = async (batchData: BatchScheduleData) => {
+    const newSessionsToSave: DailyAttendance[] = [];
+
+    setAttendances(prev => {
+      const copy = [...prev];
+      for (const item of batchData.sessions) {
+        const existingIdx = copy.findIndex(a => a.date === item.date);
+        let sessionObj: DailyAttendance;
+        if (existingIdx >= 0) {
+          sessionObj = {
+            ...copy[existingIdx],
+            sessionName: item.sessionName,
+            scheduledTime: item.scheduledTime,
+            location: item.location,
+            targetSection: item.targetSection,
+            description: item.description,
+            isScheduled: true
+          };
+          copy[existingIdx] = sessionObj;
+        } else {
+          sessionObj = {
+            id: `sesi-${item.date}`,
+            date: item.date,
+            sessionName: item.sessionName,
+            scheduledTime: item.scheduledTime,
+            location: item.location,
+            targetSection: item.targetSection,
+            description: item.description,
+            isScheduled: true,
+            isSubmitted: false,
+            records: []
+          };
+          copy.push(sessionObj);
+        }
+        newSessionsToSave.push(sessionObj);
+      }
+      copy.sort((a, b) => b.date.localeCompare(a.date));
+      localStorage.setItem('pgt_attendances', JSON.stringify(copy));
+      return copy;
+    });
+
+    // Sync all new sessions to Cloud
+    newSessionsToSave.forEach(s => {
+      saveAttendanceToCloud(s).catch(() => {});
+    });
+
+    if (batchData.autoPublishAnnouncement && batchData.sessions.length > 0) {
+      const first = batchData.sessions[0];
+      const last = batchData.sessions[batchData.sessions.length - 1];
+      const dateListStr = batchData.sessions.slice(0, 8).map(s => `• ${s.date} (${s.sessionName}) - ${s.scheduledTime}`).join('\n');
+      const moreCount = batchData.sessions.length > 8 ? `\n...dan ${batchData.sessions.length - 8} sesi lainnya` : '';
+      
+      const newAnn: Announcement = {
+        id: `ann-batch-${Date.now()}`,
+        title: `⚡ Jadwal Rutin Otomatis (${batchData.sessions.length} Sesi Terbit)`,
+        content: `Administrator telah menerbitkan ${batchData.sessions.length} sesi latihan otomatis untuk periode ${first.date} s/d ${last.date}:\n\n${dateListStr}${moreCount}\n\n• Lokasi: ${first.location}\n• Unit: ${first.targetSection === 'All' ? 'Seluruh Korps' : first.targetSection}\n\nMohon seluruh anggota mencatat jadwal dan hadir tepat waktu.`,
+        category: 'schedule',
+        targetAudience: 'All',
+        author: currentUser?.fullName || 'Administrator Utama',
+        authorRole: 'Super Admin',
+        createdAt: new Date().toISOString().split('T')[0],
+        pinned: true
+      };
+
+      setAnnouncements(prev => {
+        const updated = [newAnn, ...prev];
+        localStorage.setItem('pgt_announcements', JSON.stringify(updated));
+        saveAnnouncementToCloud(newAnn).catch(() => {});
+        return updated;
+      });
+    }
+
+    if (batchData.sessions.length > 0) {
+      setSelectedDate(batchData.sessions[0].date);
+      setCurrentSessionName(batchData.sessions[0].sessionName);
+    }
+
+    triggerToast(`⚡ Berhasil menjadwalkan ${batchData.sessions.length} sesi latihan otomatis!`, 'success');
+  };
+
   const handleDeleteSchedule = async (sessionId: string) => {
     setAttendances(prev => {
       const updated = prev.filter(a => (a.id || `sesi-${a.date}`) !== sessionId);
@@ -1206,6 +1324,25 @@ export default function App() {
       console.warn("Gagal simpan update sesi ke cloud:", e);
       triggerToast('Perubahan tersimpan di lokal (Cloud belum tersinkron).', 'warning');
     }
+  };
+
+  const handleToggleCloseCurrentSession = async () => {
+    const currentSession = attendances.find(a => a.date === selectedDate);
+    const isCurrentlyClosed = Boolean(currentSession?.isClosed);
+    const nowStr = new Date().toLocaleString('id-ID');
+    const updated: DailyAttendance = {
+      ...(currentSession || {
+        date: selectedDate,
+        sessionName: currentSessionName || 'Latihan Rutin',
+        records: []
+      }),
+      id: currentSession?.id || `sesi-${selectedDate}`,
+      sessionName: currentSession?.sessionName || currentSessionName || 'Latihan Rutin',
+      isClosed: !isCurrentlyClosed,
+      closedAt: !isCurrentlyClosed ? nowStr : null,
+      closedBy: !isCurrentlyClosed ? (currentUser?.fullName || 'Petugas') : null
+    };
+    await handleUpdateSession(updated);
   };
 
   const handleDeleteSession = async (sessionIdentifier: string) => {
@@ -1648,6 +1785,7 @@ export default function App() {
           setEditingScheduleSession(null);
         }}
         onSaveSchedule={handleSaveSchedule}
+        onSaveBatchSchedule={handleSaveBatchSchedule}
         onDeleteSchedule={handleDeleteSchedule}
         triggerToast={triggerToast}
       />
@@ -2312,6 +2450,25 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Petugas Guidance Banner & Submission Assistant */}
+              <OfficerSubmissionGuide
+                sessionName={currentSessionName || 'Latihan Rutin'}
+                selectedDate={selectedDate}
+                isSubmitted={Boolean(currentSession?.isSubmitted)}
+                isClosed={Boolean(currentSession?.isClosed)}
+                isExpired={selectedDate < new Date().toISOString().split('T')[0] && !currentSession?.isClosed}
+                scheduledTime={currentSession?.scheduledTime}
+                location={currentSession?.location}
+                targetSection={currentSession?.targetSection}
+                recordedCount={recordedCount}
+                totalStudents={filteredStudents.length}
+                presentCount={presentCount}
+                officerName={currentUser.fullName}
+                assignedSection={currentUser.assignedSection}
+                onOpenSubmitModal={() => setIsSubmitConfirmOpen(true)}
+                onToggleCloseSession={handleToggleCloseCurrentSession}
+              />
 
               {/* Quick Summary Numbers */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
