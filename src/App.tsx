@@ -6,7 +6,7 @@ import {
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
   Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
-  Home, Megaphone, Plus, Pin, Calendar, Timer
+  Home, Megaphone, Plus, Pin, Calendar, Timer, ArrowLeft, Undo2
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -428,6 +428,127 @@ export default function App() {
   const [syncError, setSyncError] = useState<string | undefined>(undefined);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
+
+  // Tab Navigation with Browser History Integration (Back / Undo Page Support)
+  const changePetugasTab = (newTab: PetugasTab, date?: string, replace?: boolean) => {
+    try {
+      if (!replace) {
+        window.history.pushState({ role: 'petugas', tab: newTab, selectedDate: date || selectedDate }, '', `#petugas/${newTab}`);
+      } else {
+        window.history.replaceState({ role: 'petugas', tab: newTab, selectedDate: date || selectedDate }, '', `#petugas/${newTab}`);
+      }
+    } catch (e) {}
+    setPetugasTab(newTab);
+    if (date) setSelectedDate(date);
+  };
+
+  const changeAdminTab = (newTab: AdminTab, date?: string, replace?: boolean) => {
+    try {
+      if (!replace) {
+        window.history.pushState({ role: 'admin', tab: newTab, selectedDate: date || selectedDate }, '', `#admin/${newTab}`);
+      } else {
+        window.history.replaceState({ role: 'admin', tab: newTab, selectedDate: date || selectedDate }, '', `#admin/${newTab}`);
+      }
+    } catch (e) {}
+    setAdminTab(newTab);
+    if (date) setSelectedDate(date);
+  };
+
+  // Helper to close all modal overlays
+  const closeAllModals = (): boolean => {
+    let hadOpenModal = false;
+    if (isScheduleModalOpen) { setIsScheduleModalOpen(false); hadOpenModal = true; }
+    if (isPaperSheetModalOpen) { setIsPaperSheetModalOpen(false); hadOpenModal = true; }
+    if (isInlineEditMode) { setIsInlineEditMode(false); hadOpenModal = true; }
+    if (isClearAllModalOpen) { setIsClearAllModalOpen(false); hadOpenModal = true; }
+    if (isEditMemberModalOpen) { setIsEditMemberModalOpen(false); hadOpenModal = true; }
+    if (isAddMemberModalOpen) { setIsAddMemberModalOpen(false); hadOpenModal = true; }
+    if (isSubmitConfirmOpen) { setIsSubmitConfirmOpen(false); hadOpenModal = true; }
+    if (isRestoreModalOpen) { setIsRestoreModalOpen(false); hadOpenModal = true; }
+    if (isUserModalOpen) { setIsUserModalOpen(false); hadOpenModal = true; }
+    if (isAdminPassModalOpen) { setIsAdminPassModalOpen(false); hadOpenModal = true; }
+    if (showSyncInfoModal) { setShowSyncInfoModal(false); hadOpenModal = true; }
+    if (isMobileMenuOpen) { setIsMobileMenuOpen(false); hadOpenModal = true; }
+    return hadOpenModal;
+  };
+
+  // Undo / Go Back Action
+  const handleGoBack = () => {
+    // 1. If any modal is open, close modal first
+    if (closeAllModals()) return;
+
+    // 2. If browser history state exists and we are not on home, go back in history
+    if (window.history.state && window.history.state.tab && (
+      (currentUser?.role === 'petugas' && petugasTab !== 'home') ||
+      (currentUser?.role === 'admin' && adminTab !== 'home')
+    )) {
+      window.history.back();
+    } else {
+      // 3. Fallback: return to Home
+      if (currentUser?.role === 'petugas') {
+        changePetugasTab('home');
+      } else if (currentUser?.role === 'admin') {
+        changeAdminTab('home');
+      }
+    }
+  };
+
+  // Browser History popstate listener for back / undo button
+  useEffect(() => {
+    if (!window.history.state && currentUser) {
+      const role = currentUser.role;
+      const initialTab = role === 'admin' ? adminTab : petugasTab;
+      try {
+        window.history.replaceState({ role, tab: initialTab, selectedDate }, '', `#${role}/${initialTab}`);
+      } catch (e) {}
+    }
+
+    const handlePopState = (e: PopStateEvent) => {
+      // Close open modals first
+      if (
+        isScheduleModalOpen || isPaperSheetModalOpen || isInlineEditMode ||
+        isClearAllModalOpen || isEditMemberModalOpen || isAddMemberModalOpen ||
+        isSubmitConfirmOpen || isRestoreModalOpen || isUserModalOpen ||
+        isAdminPassModalOpen || showSyncInfoModal || isMobileMenuOpen
+      ) {
+        closeAllModals();
+        return;
+      }
+
+      const state = e.state;
+      if (state && state.tab) {
+        if (currentUser?.role === 'petugas') {
+          const validPetugasTabs: PetugasTab[] = ['home', 'attendance', 'announcements', 'sessions', 'recap', 'members', 'my_history'];
+          if (validPetugasTabs.includes(state.tab)) {
+            setPetugasTab(state.tab as PetugasTab);
+          }
+        } else if (currentUser?.role === 'admin') {
+          const validAdminTabs: AdminTab[] = ['home', 'admin_dashboard', 'announcements', 'recap', 'edit_absensi', 'google_sheets', 'members', 'manage_users'];
+          if (validAdminTabs.includes(state.tab)) {
+            setAdminTab(state.tab as AdminTab);
+          }
+        }
+        if (state.selectedDate) {
+          setSelectedDate(state.selectedDate);
+        }
+      } else {
+        if (currentUser?.role === 'petugas') {
+          setPetugasTab('home');
+        } else if (currentUser?.role === 'admin') {
+          setAdminTab('home');
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [
+    currentUser, adminTab, petugasTab, selectedDate,
+    isScheduleModalOpen, isPaperSheetModalOpen, isInlineEditMode,
+    isClearAllModalOpen, isEditMemberModalOpen, isAddMemberModalOpen,
+    isSubmitConfirmOpen, isRestoreModalOpen, isUserModalOpen,
+    isAdminPassModalOpen, showSyncInfoModal, isMobileMenuOpen
+  ]);
 
   // Real-time Cloud Synchronization with Firebase Firestore
   useEffect(() => {
@@ -2213,6 +2334,18 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {petugasTab !== 'home' && (
+              <button
+                type="button"
+                onClick={handleGoBack}
+                className="px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+                title="Kembali ke halaman sebelumnya (Undo / Back)"
+              >
+                <ArrowLeft size={14} className="text-amber-400" />
+                <span>Kembali</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => setShowSyncInfoModal(true)}
@@ -2267,7 +2400,7 @@ export default function App() {
             <div className="flex items-center gap-1 overflow-x-auto">
               <button
                 type="button"
-                onClick={() => setPetugasTab('home')}
+                onClick={() => changePetugasTab('home')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'home' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <Home size={14} />
@@ -2275,7 +2408,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('attendance')}
+                onClick={() => changePetugasTab('attendance')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'attendance' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <ClipboardList size={14} />
@@ -2283,7 +2416,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('announcements')}
+                onClick={() => changePetugasTab('announcements')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'announcements' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <Megaphone size={14} />
@@ -2296,15 +2429,15 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('sessions')}
+                onClick={() => changePetugasTab('sessions')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'sessions' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
-                <Edit3 size={14} />
-                <span>Kelola & Submit Sesi</span>
+                <Calendar size={14} />
+                <span>Jadwal Latihan</span>
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('recap')}
+                onClick={() => changePetugasTab('recap')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'recap' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <BarChart3 size={14} />
@@ -2312,7 +2445,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('members')}
+                onClick={() => changePetugasTab('members')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'members' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <Users size={14} />
@@ -2320,7 +2453,7 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setPetugasTab('my_history')}
+                onClick={() => changePetugasTab('my_history')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${petugasTab === 'my_history' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}
               >
                 <Clock size={14} />
@@ -2344,20 +2477,23 @@ export default function App() {
               currentSessionName={currentSessionName}
               onNavigateTab={(tab) => {
                 if (tab === 'home' || tab === 'attendance' || tab === 'sessions' || tab === 'recap' || tab === 'members' || tab === 'announcements' || tab === 'my_history') {
-                  setPetugasTab(tab as PetugasTab);
+                  changePetugasTab(tab as PetugasTab);
                 } else if (tab === 'edit_absensi') {
-                  setPetugasTab('sessions');
+                  changePetugasTab('sessions');
                 } else if (tab === 'admin_dashboard') {
-                  setPetugasTab('attendance');
+                  changePetugasTab('attendance');
                 }
               }}
               onOpenAddMember={() => setIsAddMemberModalOpen(true)}
-              onOpenAddAnnouncement={() => setPetugasTab('announcements')}
+              onOpenAddAnnouncement={() => changePetugasTab('announcements')}
               onOpenScheduleModal={(session) => {
                 setEditingScheduleSession(session || null);
                 setIsScheduleModalOpen(true);
               }}
-              onSelectDate={(date) => setSelectedDate(date)}
+              onSelectDate={(date) => {
+                setSelectedDate(date);
+                changePetugasTab('attendance', date);
+              }}
               triggerToast={triggerToast}
             />
           )}
@@ -2900,6 +3036,7 @@ export default function App() {
               sessions={attendances}
               students={activeStudents}
               currentUserName={currentUser?.fullName || 'Petugas Lapangan'}
+              isAdmin={false}
               onUpdateSession={handleUpdateSession}
               onDeleteSession={handleDeleteSession}
               onSubmitSession={(sessionId) => {
@@ -2910,7 +3047,13 @@ export default function App() {
                   setIsSubmitConfirmOpen(true);
                 }
               }}
-              onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+              onSelectSessionDate={(dateStr) => {
+                setSelectedDate(dateStr);
+                const matched = attendances.find(a => a.date === dateStr);
+                if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
+                setPetugasTab('attendance');
+                triggerToast(`Sesi presensi tanggal ${dateStr} dibuka.`, 'info');
+              }}
               triggerToast={triggerToast}
             />
           )}
@@ -3293,14 +3436,27 @@ export default function App() {
             </div>
           </div>
         </div>
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
-          className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer"
-          title="Buka / Tutup Menu Navigasi"
-        >
-          {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          <span>{isMobileMenuOpen ? 'Tutup' : 'Menu'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {adminTab !== 'home' && (
+            <button
+              type="button"
+              onClick={handleGoBack}
+              className="px-2.5 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1 transition-all active:scale-95 shadow cursor-pointer"
+              title="Kembali ke halaman sebelumnya (Undo / Back)"
+            >
+              <ArrowLeft size={14} className="text-amber-400" />
+              <span>Kembali</span>
+            </button>
+          )}
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} 
+            className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer"
+            title="Buka / Tutup Menu Navigasi"
+          >
+            {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+            <span>{isMobileMenuOpen ? 'Tutup' : 'Menu'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Floating Follow-Along Menu Button on Mobile for persistent access when scrolling */}
@@ -3332,7 +3488,7 @@ export default function App() {
                   <img 
                     src={OFFICIAL_LOGO_URL} 
                     alt="Logo" 
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-contain" 
                     onError={(e) => { (e.currentTarget as HTMLImageElement).src = "/logo.png"; }}
                   />
                 </div>
@@ -3353,7 +3509,7 @@ export default function App() {
               <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Navigasi Utama</div>
 
               <button 
-                onClick={() => { setAdminTab('home'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('home'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'home' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3370,7 +3526,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'admin_dashboard' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3387,7 +3543,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('announcements'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('announcements'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'announcements' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3404,7 +3560,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'edit_absensi' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3421,7 +3577,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('recap'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('recap'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'recap' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3436,7 +3592,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'google_sheets' 
                     ? 'bg-gradient-to-r from-emerald-800/90 to-teal-900 text-white font-bold border border-emerald-500/40 shadow-md' 
@@ -3453,7 +3609,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'manage_users' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3470,7 +3626,7 @@ export default function App() {
               </button>
 
               <button 
-                onClick={() => { setAdminTab('members'); setIsMobileMenuOpen(false); }}
+                onClick={() => { changeAdminTab('members'); setIsMobileMenuOpen(false); }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
                   adminTab === 'members' 
                     ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3563,7 +3719,7 @@ export default function App() {
           <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">Menu Administrator</div>
           
           <button 
-            onClick={() => { setAdminTab('home'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('home'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'home' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3580,7 +3736,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('admin_dashboard'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'admin_dashboard' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3597,7 +3753,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('announcements'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('announcements'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'announcements' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3614,7 +3770,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('edit_absensi'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'edit_absensi' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3631,7 +3787,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('recap'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('recap'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'recap' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3646,7 +3802,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('google_sheets'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'google_sheets' 
                 ? 'bg-gradient-to-r from-emerald-800/90 to-teal-900 text-white font-bold border border-emerald-500/40 shadow-md' 
@@ -3663,7 +3819,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('manage_users'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'manage_users' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3680,7 +3836,7 @@ export default function App() {
           </button>
 
           <button 
-            onClick={() => { setAdminTab('members'); setIsMobileMenuOpen(false); }}
+            onClick={() => { changeAdminTab('members'); setIsMobileMenuOpen(false); }}
             className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
               adminTab === 'members' 
                 ? 'bg-gradient-to-r from-purple-800/90 to-purple-900 text-white font-bold border border-purple-600/40 shadow-md' 
@@ -3719,15 +3875,25 @@ export default function App() {
         
         {/* Top Header */}
         <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/60 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md">
-          <div className="text-xs text-slate-400 font-medium">
-            <span className="text-amber-400 font-bold">Admin Console</span>
-            <span className="mx-2">/</span>
-            <span className="text-slate-200 font-semibold">
-              {adminTab === 'admin_dashboard' && 'Presensi Seluruh Sesi Marching Band'}
-              {adminTab === 'recap' && 'Rekapitulasi & Leaderboard Kehadiran'}
-              {adminTab === 'manage_users' && 'Manajemen Akun Petugas & User'}
-              {adminTab === 'members' && 'Kelola Master Data Anggota'}
-            </span>
+          <div className="flex items-center gap-3">
+            {adminTab !== 'home' && (
+              <button
+                type="button"
+                onClick={handleGoBack}
+                className="px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1.5 transition-all shadow cursor-pointer active:scale-95"
+                title="Kembali ke halaman sebelumnya (Undo / Back)"
+              >
+                <ArrowLeft size={14} className="text-amber-400" />
+                <span>Kembali</span>
+              </button>
+            )}
+            <div className="text-xs text-slate-400 font-medium">
+              <span className="text-amber-400 font-bold">Admin Console</span>
+              <span className="mx-2">/</span>
+              <span className="text-slate-200 font-semibold capitalize">
+                {adminTab === 'home' ? 'Beranda Utama' : adminTab.replace('_', ' ')}
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -3819,15 +3985,18 @@ export default function App() {
               announcements={announcements}
               selectedDate={selectedDate}
               currentSessionName={currentSessionName}
-              onNavigateTab={(tab) => setAdminTab(tab as AdminTab)}
-              onSelectAnnouncement={() => setAdminTab('announcements')}
+              onNavigateTab={(tab) => changeAdminTab(tab as AdminTab)}
+              onSelectAnnouncement={() => changeAdminTab('announcements')}
               onOpenAddMember={() => setIsAddMemberModalOpen(true)}
-              onOpenAddAnnouncement={() => setAdminTab('announcements')}
+              onOpenAddAnnouncement={() => changeAdminTab('announcements')}
               onOpenScheduleModal={(session) => {
                 setEditingScheduleSession(session || null);
                 setIsScheduleModalOpen(true);
               }}
-              onSelectDate={(date) => setSelectedDate(date)}
+              onSelectDate={(date) => {
+                setSelectedDate(date);
+                changeAdminTab('admin_dashboard', date);
+              }}
               triggerToast={triggerToast}
             />
           )}
@@ -4769,6 +4938,7 @@ export default function App() {
               sessions={attendances}
               students={students}
               currentUserName={currentUser?.fullName || currentUser?.username || 'Super Administrator'}
+              isAdmin={true}
               onUpdateSession={handleUpdateSession}
               onDeleteSession={handleDeleteSession}
               onSubmitSession={(sessionId) => {
