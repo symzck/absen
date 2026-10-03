@@ -20,10 +20,12 @@ import {
   Music,
   ChevronRight,
   Lock,
-  Unlock
+  Unlock,
+  Timer
 } from 'lucide-react';
 import { Student, DailyAttendance, SystemUser } from '../App';
 import { Announcement } from '../services/db';
+import { calculateSessionCountdown } from './OfficerSubmissionGuide';
 
 interface HomeDashboardTabProps {
   currentUser: SystemUser;
@@ -67,8 +69,11 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
     day: 'numeric'
   });
 
-  // Scheduled practice sessions list sorted by date descending
-  const scheduledSessions = [...attendances].sort((a, b) => b.date.localeCompare(a.date));
+  // Scheduled practice sessions list:
+  // For Admin: show all. For regular user/petugas: hide finished/closed sessions from the surface
+  const scheduledSessions = [...attendances]
+    .filter(a => isAdmin || (!a.isClosed && (a.date >= todayStr || a.isSubmitted === false)))
+    .sort((a, b) => b.date.localeCompare(a.date));
   const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
 
   // Current session calculations
@@ -296,6 +301,8 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
               const isClosed = session.isClosed === true;
               const isExpired = session.date < todayStr && !isClosed;
               const isToday = session.date === todayStr;
+              const countdown = calculateSessionCountdown(session.date, session.scheduledTime);
+              const isUpcoming = countdown.isUpcoming;
 
               return (
                 <div
@@ -305,6 +312,8 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       ? 'bg-slate-950/80 border-slate-800 opacity-80'
                       : isExpired
                       ? 'bg-rose-950/20 border-rose-800/40'
+                      : isUpcoming && !isAdmin
+                      ? 'bg-amber-950/20 border-amber-500/40 shadow-amber-950/20'
                       : isToday
                       ? 'bg-purple-950/40 border-purple-500 hover:border-purple-400'
                       : 'bg-slate-950 border-slate-800 hover:border-purple-600/50'
@@ -319,6 +328,10 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       {isClosed ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
                           <Lock size={10} className="text-amber-400" /> Selesai / Ditutup
+                        </span>
+                      ) : isUpcoming ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                          <Timer size={10} /> {countdown.formatted}
                         </span>
                       ) : isExpired ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
@@ -366,7 +379,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       onClick={() => handleSelectSessionDate(session.date)}
                       className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      <span>{isClosed ? 'Lihat Presensi' : 'Presensi Sesi Ini'}</span>
+                      <span>{isClosed ? 'Lihat Presensi' : isUpcoming && !isAdmin ? '⏳ Buka Sesi (Countdown)' : 'Presensi Sesi Ini'}</span>
                       <ArrowRight size={13} />
                     </button>
 

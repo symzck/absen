@@ -6,7 +6,7 @@ import {
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
   Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
-  Home, Megaphone, Plus, Pin, Calendar
+  Home, Megaphone, Plus, Pin, Calendar, Timer
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -17,7 +17,7 @@ import { HomeDashboardTab } from './components/HomeDashboardTab';
 import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
 import { ScheduleSessionModal, BatchScheduleData } from './components/ScheduleSessionModal';
-import { OfficerSubmissionGuide } from './components/OfficerSubmissionGuide';
+import { OfficerSubmissionGuide, calculateSessionCountdown } from './components/OfficerSubmissionGuide';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -835,6 +835,20 @@ export default function App() {
 
   // Attendance Handlers
   const handleSaveAttendance = (studentId: number, status: string, note: string) => {
+    // Non-admin check: locked / expired closed session or upcoming countdown
+    if (currentUser?.role !== 'admin') {
+      const existingSession = attendances.find(a => a.date === selectedDate);
+      if (existingSession?.isClosed) {
+        triggerToast('Presensi terkunci. Sesi telah ditutup & hanya Administrator yang dapat mengubah data.', 'warning');
+        return;
+      }
+      const countdown = calculateSessionCountdown(selectedDate, existingSession?.scheduledTime);
+      if (countdown.isUpcoming) {
+        triggerToast(`Presensi belum dibuka. Sesi dimulai dalam ${countdown.formatted}.`, 'warning');
+        return;
+      }
+    }
+
     setAttendances(prev => {
       const dateIndex = prev.findIndex(a => a.date === selectedDate);
       let sessionObj: DailyAttendance;
@@ -883,6 +897,20 @@ export default function App() {
   };
 
   const handleMarkAllPresent = () => {
+    // Non-admin check: locked / expired closed session or upcoming countdown
+    if (currentUser?.role !== 'admin') {
+      const existingSession = attendances.find(a => a.date === selectedDate);
+      if (existingSession?.isClosed) {
+        triggerToast('Presensi terkunci. Sesi telah ditutup & hanya Administrator yang dapat mengubah data.', 'warning');
+        return;
+      }
+      const countdown = calculateSessionCountdown(selectedDate, existingSession?.scheduledTime);
+      if (countdown.isUpcoming) {
+        triggerToast(`Presensi belum dibuka. Sesi dimulai dalam ${countdown.formatted}.`, 'warning');
+        return;
+      }
+    }
+
     setAttendances(prev => {
       const dateIndex = prev.findIndex(a => a.date === selectedDate);
       let sessionObj: DailyAttendance;
@@ -1327,6 +1355,10 @@ export default function App() {
   };
 
   const handleToggleCloseCurrentSession = async () => {
+    if (currentUser?.role !== 'admin') {
+      triggerToast('Hanya Administrator yang berwenang membuka kunci atau menutup sesi latihan.', 'warning');
+      return;
+    }
     const currentSession = attendances.find(a => a.date === selectedDate);
     const isCurrentlyClosed = Boolean(currentSession?.isClosed);
     const nowStr = new Date().toLocaleString('id-ID');
@@ -1340,7 +1372,7 @@ export default function App() {
       sessionName: currentSession?.sessionName || currentSessionName || 'Latihan Rutin',
       isClosed: !isCurrentlyClosed,
       closedAt: !isCurrentlyClosed ? nowStr : null,
-      closedBy: !isCurrentlyClosed ? (currentUser?.fullName || 'Petugas') : null
+      closedBy: !isCurrentlyClosed ? (currentUser?.fullName || 'Administrator') : null
     };
     await handleUpdateSession(updated);
   };
@@ -2330,419 +2362,526 @@ export default function App() {
             />
           )}
 
-          {petugasTab === 'attendance' && (
-            <div className="space-y-5">
-              
-              {/* Officer Control Panel */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
-                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                  <div>
-                    <h2 className="text-xl font-extrabold text-white">Presensi Anggota Latihan</h2>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Pilih status kehadiran anggota. Catatan halangan bersifat opsional jika izin atau sakit.
-                    </p>
-                  </div>
+          {petugasTab === 'attendance' && (() => {
+            const isPetugasAdmin = (currentUser?.role as string) === 'admin';
+            const currentAttendanceSession = attendances.find(a => a.date === selectedDate);
+            const isSessionClosed = Boolean(currentAttendanceSession?.isClosed);
+            const sessionCountdown = calculateSessionCountdown(selectedDate, currentAttendanceSession?.scheduledTime);
+            const isSessionUpcoming = sessionCountdown.isUpcoming;
+            const isAttendanceReadOnly = !isPetugasAdmin && (isSessionClosed || isSessionUpcoming);
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Practice Session Quick Dropdown */}
-                    {attendances.length > 0 && (
-                      <div className="flex items-center bg-slate-950 border border-purple-800/80 rounded-xl px-3 py-2 text-xs">
-                        <Calendar size={14} className="text-amber-400 mr-2 shrink-0" />
-                        <select 
-                          value={selectedDate}
-                          onChange={(e) => {
-                            setSelectedDate(e.target.value);
-                            const matched = attendances.find(a => a.date === e.target.value);
-                            if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
-                          }}
-                          className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[220px] truncate"
-                        >
-                          <option value={selectedDate} className="bg-slate-900 text-white">
-                            📅 {selectedDate} ({attendances.find(a => a.date === selectedDate)?.sessionName || 'Latihan Rutin'})
-                          </option>
-                          {attendances.filter(a => a.date !== selectedDate).map(a => (
-                            <option key={a.date} value={a.date} className="bg-slate-900 text-white">
-                              📅 {a.date} - {a.sessionName || 'Latihan Rutin'}
-                            </option>
-                          ))}
-                        </select>
+            // Hide finished/closed sessions from Petugas surface so they cannot tamper with them
+            const selectablePetugasSessions = isPetugasAdmin 
+              ? attendances 
+              : attendances.filter(a => !a.isClosed && (a.date >= new Date().toISOString().split('T')[0] || a.isSubmitted === false));
+
+            return (
+              <div className="space-y-5">
+                
+                {/* Officer Control Panel */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
+                  <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-extrabold text-white">Presensi Anggota Latihan</h2>
+                        {isSessionClosed ? (
+                          <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-bold flex items-center gap-1">
+                            <Lock size={10} className="text-amber-400" /> Terkunci
+                          </span>
+                        ) : isSessionUpcoming ? (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1">
+                            <Timer size={10} /> Menunggu Mulai
+                          </span>
+                        ) : null}
                       </div>
-                    )}
-
-                    {/* Date Selector */}
-                    <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                      <span className="text-slate-400 mr-2 font-medium">Tanggal Custom:</span>
-                      <input 
-                        type="date" 
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
-                      />
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {isAttendanceReadOnly
+                          ? isSessionClosed
+                            ? 'Sesi ini telah ditutup & terkunci. Hanya Administrator yang dapat mengubah data.'
+                            : `Sesi belum dimulai (Countdown: ${sessionCountdown.formatted}). Presensi dibuka saat sesi dimulai.`
+                          : 'Pilih status kehadiran anggota. Catatan halangan bersifat opsional jika izin atau sakit.'}
+                      </p>
                     </div>
 
-                    {/* Section Selector (If officer has All permission) */}
-                    {currentUser.assignedSection === 'All' ? (
-                      <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                        <Filter size={14} className="text-slate-400 mr-2" />
-                        <select 
-                          value={selectedSection}
-                          onChange={(e) => setSelectedSection(e.target.value)}
-                          className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
-                        >
-                          {sections.map(sec => (
-                            <option key={sec} value={sec} className="bg-slate-900 text-white">
-                              {sec === 'All' ? 'Semua Section' : `Section: ${sec}`}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2 bg-purple-950/70 border border-purple-700/50 rounded-xl text-xs font-bold text-purple-300">
-                        Section: {currentUser.assignedSection}
-                      </div>
-                    )}
-
-                    <button 
-                      type="button"
-                      onClick={() => setIsPaperSheetModalOpen(true)}
-                      className="px-3.5 py-2 bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
-                      title="Input atau koreksi data anggota (nama, kelas, asrama, section) sesuai lembar presensi kertas"
-                    >
-                      <ClipboardList size={14} className="text-amber-400" />
-                      <span>Mode Presensi Kertas</span>
-                    </button>
-
-                    <button 
-                      type="button"
-                      onClick={() => setIsInlineEditMode(!isInlineEditMode)}
-                      className={`px-3 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
-                        isInlineEditMode 
-                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-950' 
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
-                      }`}
-                      title="Aktifkan mode edit cepat identitas pemain langsung di tabel tanpa membuka modal"
-                    >
-                      <Edit3 size={14} />
-                      <span>{isInlineEditMode ? 'Tutup Edit Cepat' : 'Edit Cepat Pemain'}</span>
-                    </button>
-
-                    <button 
-                      onClick={handleMarkAllPresent}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95"
-                    >
-                      <CheckSquare size={15} />
-                      <span>Hadir Semua</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Search Bar */}
-                <div className="mt-4 pt-3 border-t border-slate-800">
-                  <div className="relative max-w-md">
-                    <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input 
-                      type="text" 
-                      placeholder="Cari nama pemain atau kelas..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Petugas Guidance Banner & Submission Assistant */}
-              <OfficerSubmissionGuide
-                sessionName={currentSessionName || 'Latihan Rutin'}
-                selectedDate={selectedDate}
-                isSubmitted={Boolean(currentSession?.isSubmitted)}
-                isClosed={Boolean(currentSession?.isClosed)}
-                isExpired={selectedDate < new Date().toISOString().split('T')[0] && !currentSession?.isClosed}
-                scheduledTime={currentSession?.scheduledTime}
-                location={currentSession?.location}
-                targetSection={currentSession?.targetSection}
-                recordedCount={recordedCount}
-                totalStudents={filteredStudents.length}
-                presentCount={presentCount}
-                officerName={currentUser.fullName}
-                assignedSection={currentUser.assignedSection}
-                onOpenSubmitModal={() => setIsSubmitConfirmOpen(true)}
-                onToggleCloseSession={handleToggleCloseCurrentSession}
-              />
-
-              {/* Quick Summary Numbers */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
-                  <div className="text-[11px] text-slate-400 uppercase font-semibold">Total Anggota</div>
-                  <div className="text-xl font-black text-white mt-0.5 tabular-nums">{filteredStudents.length}</div>
-                </div>
-                <div className="bg-emerald-950/30 border border-emerald-800/40 p-3.5 rounded-2xl">
-                  <div className="text-[11px] text-emerald-400 uppercase font-semibold">Hadir Sesi Ini</div>
-                  <div className="text-xl font-black text-emerald-300 mt-0.5 tabular-nums">{presentCount}</div>
-                </div>
-                <div className="bg-amber-950/30 border border-amber-800/40 p-3.5 rounded-2xl">
-                  <div className="text-[11px] text-amber-400 uppercase font-semibold">Izin & Sakit</div>
-                  <div className="text-xl font-black text-amber-300 mt-0.5 tabular-nums">{sickCount + permitCount}</div>
-                </div>
-                <div className="bg-rose-950/30 border border-rose-800/40 p-3.5 rounded-2xl">
-                  <div className="text-[11px] text-rose-400 uppercase font-semibold">Alfa / Belum Diabsen</div>
-                  <div className="text-xl font-black text-rose-300 mt-0.5 tabular-nums">{absentCount}</div>
-                </div>
-              </div>
-
-              {/* Attendance Table */}
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <th className="py-3 px-5 w-12 text-center">No</th>
-                        <th className="py-3 px-5">Nama Anggota</th>
-                        <th className="py-3 px-5 text-center">Status Kehadiran</th>
-                        <th className="py-3 px-5">Catatan Izin / Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-sm">
-                      {filteredStudents.map((student, idx) => {
-                        const record = getCurrentRecord(student.id);
-                        return (
-                          <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
-                            <td className="py-3 px-5 text-center text-xs text-slate-500 tabular-nums">{idx + 1}</td>
-                            <td className="py-3 px-5">
-                              {isInlineEditMode ? (
-                                <div className="flex flex-col gap-1.5 p-1 bg-slate-950 border border-amber-500/50 rounded-xl">
-                                  <input 
-                                    type="text" 
-                                    value={student.name}
-                                    onChange={(e) => handleSaveEditedStudent({ ...student, name: e.target.value })}
-                                    className="px-2 py-1 text-xs font-bold text-white bg-slate-900 border border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
-                                    placeholder="Nama Pemain..."
-                                  />
-                                  <div className="flex items-center gap-1.5 text-[11px]">
-                                    <input 
-                                      type="text" 
-                                      value={student.kelas}
-                                      onChange={(e) => handleSaveEditedStudent({ ...student, kelas: e.target.value })}
-                                      className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-purple-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
-                                      placeholder="Kelas"
-                                    />
-                                    <input 
-                                      type="text" 
-                                      value={student.asrama}
-                                      onChange={(e) => handleSaveEditedStudent({ ...student, asrama: e.target.value })}
-                                      className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-amber-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
-                                      placeholder="Asrama"
-                                    />
-                                    <select 
-                                      value={student.section}
-                                      onChange={(e) => handleSaveEditedStudent({ ...student, section: e.target.value })}
-                                      className="px-1.5 py-0.5 text-[11px] font-bold text-sky-200 bg-slate-900 border border-slate-700 rounded"
-                                    >
-                                      {['Brass', 'Cologuard', 'Battery', 'Pit', student.section].filter((v, i, a) => a.indexOf(v) === i).map(s => (
-                                        <option key={s} value={s}>{s}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                </div>
-                              ) : (
-                                <>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-100">{student.name}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setEditingStudent(student);
-                                        setIsEditMemberModalOpen(true);
-                                      }}
-                                      className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
-                                      title={`Edit identitas, kelas, asrama, atau section ${student.name}`}
-                                    >
-                                      <Edit3 size={13} />
-                                    </button>
-                                  </div>
-                                  <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                                    <span className="text-purple-300 font-semibold">{student.section}</span>
-                                    <span>·</span>
-                                    <span>Kelas {student.kelas}</span>
-                                    <span>·</span>
-                                    <span>Asrama {student.asrama}</span>
-                                  </div>
-                                </>
-                              )}
-                            </td>
-                            <td className="py-3 px-5 text-center">
-                              <div className="inline-flex items-center rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1 shadow-inner">
-                                {[
-                                  { key: 'Hadir', label: 'Hadir', color: 'bg-emerald-600 text-white hover:bg-emerald-500' },
-                                  { key: 'Sakit', label: 'Sakit', color: 'bg-amber-600 text-white hover:bg-amber-500' },
-                                  { key: 'Izin', label: 'Izin', color: 'bg-sky-600 text-white hover:bg-sky-500' },
-                                  { key: 'Alfa', label: 'Alfa', color: 'bg-rose-600 text-white hover:bg-rose-500' }
-                                ].map(statusObj => {
-                                  const isActive = record.status === statusObj.key;
-                                  return (
-                                    <button
-                                      key={statusObj.key}
-                                      type="button"
-                                      onClick={() => handleSaveAttendance(student.id, isActive ? '' : statusObj.key, record.note)}
-                                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                                        isActive ? `${statusObj.color} shadow-md` : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-                                      }`}
-                                    >
-                                      {statusObj.label}
-                                    </button>
-                                  );
-                                })}
-
-                                {/* Opsi Batal / Reset */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveAttendance(student.id, '', '')}
-                                  title={record.status ? "Batalkan / Hapus status presensi siswa ini" : "Belum diabsen"}
-                                  className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                                    !record.status
-                                      ? 'text-slate-500 bg-slate-900 border border-slate-800/80 cursor-default opacity-60'
-                                      : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/30'
-                                  }`}
-                                >
-                                  <RotateCcw size={12} className={record.status ? 'text-rose-400' : 'text-slate-500'} />
-                                  <span>Batal</span>
-                                </button>
-                              </div>
-                            </td>
-                            <td className="py-3 px-5">
-                              <input 
-                                type="text" 
-                                placeholder="Keterangan..."
-                                value={record.note}
-                                onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)}
-                                className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Mobile Cards */}
-                <div className="md:hidden p-3 space-y-2.5">
-                  {filteredStudents.map((student) => {
-                    const record = getCurrentRecord(student.id);
-                    return (
-                      <div key={student.id} className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-bold text-white text-sm flex items-center gap-1.5">
-                              <span>{student.name}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingStudent(student);
-                                  setIsEditMemberModalOpen(true);
-                                }}
-                                className="p-1 text-slate-400 hover:text-purple-300"
-                                title="Edit data pemain ini"
-                              >
-                                <Edit3 size={13} />
-                              </button>
-                            </div>
-                            <div className="text-[11px] text-slate-400">Section {student.section} · Kls {student.kelas} · Asr {student.asrama}</div>
-                          </div>
-                          {record.status ? (
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700/50">
-                              {record.status}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">
-                              Belum Diabsen
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-5 gap-1">
-                          {['Hadir', 'Sakit', 'Izin', 'Alfa'].map(st => (
-                            <button
-                              key={st}
-                              onClick={() => handleSaveAttendance(student.id, record.status === st ? '' : st, record.note)}
-                              className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                                record.status === st 
-                                  ? (st === 'Hadir' ? 'bg-emerald-600 text-white' : st === 'Alfa' ? 'bg-rose-600 text-white' : 'bg-amber-600 text-white') 
-                                  : 'bg-slate-900 text-slate-400'
-                              }`}
-                            >
-                              {st}
-                            </button>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => handleSaveAttendance(student.id, '', '')}
-                            title="Batalkan status absensi"
-                            className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                              !record.status 
-                                ? 'bg-slate-900 text-slate-600 border border-slate-800/80' 
-                                : 'bg-rose-950/40 text-rose-300 border border-rose-800/50'
-                            }`}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Practice Session Quick Dropdown */}
+                      {selectablePetugasSessions.length > 0 && (
+                        <div className="flex items-center bg-slate-950 border border-purple-800/80 rounded-xl px-3 py-2 text-xs">
+                          <Calendar size={14} className="text-amber-400 mr-2 shrink-0" />
+                          <select 
+                            value={selectedDate}
+                            onChange={(e) => {
+                              setSelectedDate(e.target.value);
+                              const matched = attendances.find(a => a.date === e.target.value);
+                              if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
+                            }}
+                            className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[220px] truncate"
                           >
-                            <RotateCcw size={11} />
-                            <span>Batal</span>
-                          </button>
+                            <option value={selectedDate} className="bg-slate-900 text-white">
+                              📅 {selectedDate} ({attendances.find(a => a.date === selectedDate)?.sessionName || 'Latihan Rutin'})
+                            </option>
+                            {selectablePetugasSessions.filter(a => a.date !== selectedDate).map(a => (
+                              <option key={a.date} value={a.date} className="bg-slate-900 text-white">
+                                📅 {a.date} - {a.sessionName || 'Latihan Rutin'}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+                      )}
 
+                      {/* Date Selector */}
+                      <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
+                        <span className="text-slate-400 mr-2 font-medium">Tanggal Custom:</span>
                         <input 
-                          type="text" 
-                          placeholder="Catatan..."
-                          value={record.note}
-                          onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)}
-                          className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600"
+                          type="date" 
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
                         />
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* Officer Submit & Draft Status Action Bar */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl mt-2">
-                <div className="text-xs text-slate-400">
-                  Status: <strong className={currentSession?.isSubmitted ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
-                    {currentSession?.isSubmitted ? '✓ Resmi Ter-submit' : '⏳ Draf (Belum Masuk Rekap)'}
-                  </strong>
+                      {/* Section Selector (If officer has All permission) */}
+                      {currentUser.assignedSection === 'All' ? (
+                        <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
+                          <Filter size={14} className="text-slate-400 mr-2" />
+                          <select 
+                            value={selectedSection}
+                            onChange={(e) => setSelectedSection(e.target.value)}
+                            className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+                          >
+                            {sections.map(sec => (
+                              <option key={sec} value={sec} className="bg-slate-900 text-white">
+                                {sec === 'All' ? 'Semua Section' : `Section: ${sec}`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="px-3 py-2 bg-purple-950/70 border border-purple-700/50 rounded-xl text-xs font-bold text-purple-300">
+                          Section: {currentUser.assignedSection}
+                        </div>
+                      )}
+
+                      <button 
+                        type="button"
+                        disabled={isAttendanceReadOnly}
+                        onClick={() => !isAttendanceReadOnly && setIsPaperSheetModalOpen(true)}
+                        className={`px-3.5 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all ${
+                          isAttendanceReadOnly
+                            ? 'bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed border border-slate-700'
+                            : 'bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white active:scale-95 cursor-pointer'
+                        }`}
+                        title={isAttendanceReadOnly ? "Presensi terkunci (sesi belum dimulai atau telah ditutup)" : "Input atau koreksi data anggota sesuai lembar presensi kertas"}
+                      >
+                        <ClipboardList size={14} className={isAttendanceReadOnly ? "text-slate-500" : "text-amber-400"} />
+                        <span>Mode Presensi Kertas</span>
+                      </button>
+
+                      <button 
+                        type="button"
+                        disabled={isAttendanceReadOnly}
+                        onClick={() => !isAttendanceReadOnly && setIsInlineEditMode(!isInlineEditMode)}
+                        className={`px-3 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all border ${
+                          isAttendanceReadOnly
+                            ? 'bg-slate-900 text-slate-500 border-slate-800 opacity-60 cursor-not-allowed'
+                            : isInlineEditMode 
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-950 cursor-pointer' 
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white cursor-pointer'
+                        }`}
+                        title={isAttendanceReadOnly ? "Presensi terkunci" : "Aktifkan mode edit cepat identitas pemain langsung di tabel tanpa membuka modal"}
+                      >
+                        <Edit3 size={14} />
+                        <span>{isInlineEditMode ? 'Tutup Edit Cepat' : 'Edit Cepat Pemain'}</span>
+                      </button>
+
+                      <button 
+                        disabled={isAttendanceReadOnly}
+                        onClick={() => !isAttendanceReadOnly && handleMarkAllPresent()}
+                        className={`px-4 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all ${
+                          isAttendanceReadOnly
+                            ? 'bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed border border-slate-700'
+                            : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer'
+                        }`}
+                        title={isAttendanceReadOnly ? "Presensi terkunci" : "Tandai hadir semua pemain"}
+                      >
+                        <CheckSquare size={15} />
+                        <span>Hadir Semua</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="mt-4 pt-3 border-t border-slate-800">
+                    <div className="relative max-w-md">
+                      <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                      <input 
+                        type="text" 
+                        placeholder="Cari nama pemain atau kelas..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-700/80 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2.5">
-                  <button 
-                    type="button"
-                    onClick={() => handleSaveCurrentSession(false)}
-                    className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-2 transition-colors cursor-pointer"
-                  >
-                    <Save size={15} />
-                    <span>Simpan Draf</span>
-                  </button>
+                {/* Petugas Guidance Banner & Submission Assistant */}
+                <OfficerSubmissionGuide
+                  sessionName={currentSessionName || 'Latihan Rutin'}
+                  selectedDate={selectedDate}
+                  isSubmitted={Boolean(currentSession?.isSubmitted)}
+                  isClosed={Boolean(currentSession?.isClosed)}
+                  isExpired={selectedDate < new Date().toISOString().split('T')[0] && !currentSession?.isClosed}
+                  isAdmin={isPetugasAdmin}
+                  scheduledTime={currentSession?.scheduledTime}
+                  location={currentSession?.location}
+                  targetSection={currentSession?.targetSection}
+                  recordedCount={recordedCount}
+                  totalStudents={filteredStudents.length}
+                  presentCount={presentCount}
+                  officerName={currentUser.fullName}
+                  assignedSection={currentUser.assignedSection}
+                  onOpenSubmitModal={() => setIsSubmitConfirmOpen(true)}
+                  onToggleCloseSession={handleToggleCloseCurrentSession}
+                />
 
-                  {!currentSession?.isSubmitted ? (
-                    <button 
-                      type="button"
-                      onClick={() => setIsSubmitConfirmOpen(true)}
-                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950 transition-all active:scale-95 cursor-pointer"
-                    >
-                      <Send size={15} />
-                      <span>🚀 Submit Presensi Sesi Ini</span>
-                    </button>
-                  ) : (
-                    <button 
-                      type="button"
-                      onClick={() => handleSaveCurrentSession(true)}
-                      className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
-                    >
-                      <Save size={15} />
-                      <span>Simpan Perubahan</span>
-                    </button>
-                  )}
+                {/* Quick Summary Numbers */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-2xl">
+                    <div className="text-[11px] text-slate-400 uppercase font-semibold">Total Anggota</div>
+                    <div className="text-xl font-black text-white mt-0.5 tabular-nums">{filteredStudents.length}</div>
+                  </div>
+                  <div className="bg-emerald-950/30 border border-emerald-800/40 p-3.5 rounded-2xl">
+                    <div className="text-[11px] text-emerald-400 uppercase font-semibold">Hadir Sesi Ini</div>
+                    <div className="text-xl font-black text-emerald-300 mt-0.5 tabular-nums">{presentCount}</div>
+                  </div>
+                  <div className="bg-amber-950/30 border border-amber-800/40 p-3.5 rounded-2xl">
+                    <div className="text-[11px] text-amber-400 uppercase font-semibold">Izin & Sakit</div>
+                    <div className="text-xl font-black text-amber-300 mt-0.5 tabular-nums">{sickCount + permitCount}</div>
+                  </div>
+                  <div className="bg-rose-950/30 border border-rose-800/40 p-3.5 rounded-2xl">
+                    <div className="text-[11px] text-rose-400 uppercase font-semibold">Alfa / Belum Diabsen</div>
+                    <div className="text-xl font-black text-rose-300 mt-0.5 tabular-nums">{absentCount}</div>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+
+                {/* Attendance Table */}
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          <th className="py-3 px-5 w-12 text-center">No</th>
+                          <th className="py-3 px-5">Nama Anggota</th>
+                          <th className="py-3 px-5 text-center">Status Kehadiran</th>
+                          <th className="py-3 px-5">Catatan Izin / Keterangan</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 text-sm">
+                        {filteredStudents.map((student, idx) => {
+                          const record = getCurrentRecord(student.id);
+                          return (
+                            <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
+                              <td className="py-3 px-5 text-center text-xs text-slate-500 tabular-nums">{idx + 1}</td>
+                              <td className="py-3 px-5">
+                                {isInlineEditMode ? (
+                                  <div className="flex flex-col gap-1.5 p-1 bg-slate-950 border border-amber-500/50 rounded-xl">
+                                    <input 
+                                      type="text" 
+                                      value={student.name}
+                                      onChange={(e) => handleSaveEditedStudent({ ...student, name: e.target.value })}
+                                      className="px-2 py-1 text-xs font-bold text-white bg-slate-900 border border-slate-700 rounded focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                      placeholder="Nama Pemain..."
+                                    />
+                                    <div className="flex items-center gap-1.5 text-[11px]">
+                                      <input 
+                                       type="text" 
+                                       value={student.kelas}
+                                       onChange={(e) => handleSaveEditedStudent({ ...student, kelas: e.target.value })}
+                                       className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-purple-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
+                                       placeholder="Kelas"
+                                      />
+                                      <input 
+                                        type="text" 
+                                        value={student.asrama}
+                                        onChange={(e) => handleSaveEditedStudent({ ...student, asrama: e.target.value })}
+                                        className="w-16 px-1.5 py-0.5 text-[11px] font-bold text-amber-200 bg-slate-900 border border-slate-700 rounded text-center uppercase"
+                                        placeholder="Asrama"
+                                      />
+                                      <select 
+                                        value={student.section}
+                                        onChange={(e) => handleSaveEditedStudent({ ...student, section: e.target.value })}
+                                        className="px-1.5 py-0.5 text-[11px] font-bold text-sky-200 bg-slate-900 border border-slate-700 rounded"
+                                      >
+                                        {['Brass', 'Cologuard', 'Battery', 'Pit', student.section].filter((v, i, a) => a.indexOf(v) === i).map(s => (
+                                          <option key={s} value={s}>{s}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold text-slate-100">{student.name}</span>
+                                      {!isAttendanceReadOnly && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingStudent(student);
+                                            setIsEditMemberModalOpen(true);
+                                          }}
+                                          className="p-1 rounded-md text-slate-500 hover:text-purple-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                          title={`Edit identitas, kelas, asrama, atau section ${student.name}`}
+                                        >
+                                          <Edit3 size={13} />
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                                      <span className="text-purple-300 font-semibold">{student.section}</span>
+                                      <span>·</span>
+                                      <span>Kelas {student.kelas}</span>
+                                      <span>·</span>
+                                      <span>Asrama {student.asrama}</span>
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                              <td className="py-3 px-5 text-center">
+                                <div className="inline-flex items-center rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1 shadow-inner">
+                                  {[
+                                    { key: 'Hadir', label: 'Hadir', color: 'bg-emerald-600 text-white hover:bg-emerald-500' },
+                                    { key: 'Sakit', label: 'Sakit', color: 'bg-amber-600 text-white hover:bg-amber-500' },
+                                    { key: 'Izin', label: 'Izin', color: 'bg-sky-600 text-white hover:bg-sky-500' },
+                                    { key: 'Alfa', label: 'Alfa', color: 'bg-rose-600 text-white hover:bg-rose-500' }
+                                  ].map(statusObj => {
+                                    const isActive = record.status === statusObj.key;
+                                    return (
+                                      <button
+                                        key={statusObj.key}
+                                        type="button"
+                                        disabled={isAttendanceReadOnly}
+                                        onClick={() => {
+                                          if (isAttendanceReadOnly) {
+                                            triggerToast(
+                                              isSessionClosed
+                                                ? 'Presensi terkunci. Sesi telah ditutup oleh Administrator.'
+                                                : 'Presensi terkunci. Sesi latihan belum dimulai (menunggu countdown).',
+                                              'warning'
+                                            );
+                                            return;
+                                          }
+                                          handleSaveAttendance(student.id, isActive ? '' : statusObj.key, record.note);
+                                        }}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                          isAttendanceReadOnly
+                                            ? isActive
+                                              ? `${statusObj.color} opacity-75 cursor-not-allowed`
+                                              : 'text-slate-600 bg-slate-900/60 opacity-40 cursor-not-allowed'
+                                            : isActive 
+                                            ? `${statusObj.color} shadow-md cursor-pointer` 
+                                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer'
+                                        }`}
+                                      >
+                                        {statusObj.label}
+                                      </button>
+                                    );
+                                  })}
+
+                                  {/* Opsi Batal / Reset */}
+                                  <button
+                                    type="button"
+                                    disabled={isAttendanceReadOnly}
+                                    onClick={() => {
+                                      if (isAttendanceReadOnly) return;
+                                      handleSaveAttendance(student.id, '', '');
+                                    }}
+                                    title={record.status ? "Batalkan / Hapus status presensi siswa ini" : "Belum diabsen"}
+                                    className={`px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                                      isAttendanceReadOnly
+                                        ? 'text-slate-600 bg-slate-900/40 opacity-40 cursor-not-allowed'
+                                        : !record.status
+                                        ? 'text-slate-500 bg-slate-900 border border-slate-800/80 cursor-default opacity-60'
+                                        : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/30 cursor-pointer'
+                                    }`}
+                                  >
+                                    <RotateCcw size={12} className={record.status ? 'text-rose-400' : 'text-slate-500'} />
+                                    <span>Batal</span>
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-5">
+                                <input 
+                                  type="text" 
+                                  placeholder={isAttendanceReadOnly ? "Presensi terkunci..." : "Keterangan..."}
+                                  disabled={isAttendanceReadOnly}
+                                  value={record.note}
+                                  onChange={(e) => !isAttendanceReadOnly && handleSaveAttendance(student.id, record.status, e.target.value)}
+                                  className={`w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500 ${
+                                    isAttendanceReadOnly ? 'opacity-50 cursor-not-allowed bg-slate-900/40' : ''
+                                  }`}
+                                />
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Cards */}
+                  <div className="md:hidden p-3 space-y-2.5">
+                    {filteredStudents.map((student) => {
+                      const record = getCurrentRecord(student.id);
+                      return (
+                        <div key={student.id} className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-bold text-white text-sm flex items-center gap-1.5">
+                                <span>{student.name}</span>
+                                {!isAttendanceReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingStudent(student);
+                                      setIsEditMemberModalOpen(true);
+                                    }}
+                                    className="p-1 text-slate-400 hover:text-purple-300"
+                                    title="Edit data pemain ini"
+                                  >
+                                    <Edit3 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400">Section {student.section} · Kls {student.kelas} · Asr {student.asrama}</div>
+                            </div>
+                            {record.status ? (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700/50">
+                                {record.status}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-900 text-slate-500 border border-slate-800">
+                                Belum Diabsen
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-5 gap-1">
+                            {['Hadir', 'Sakit', 'Izin', 'Alfa'].map(st => (
+                              <button
+                                key={st}
+                                disabled={isAttendanceReadOnly}
+                                onClick={() => {
+                                  if (isAttendanceReadOnly) return;
+                                  handleSaveAttendance(student.id, record.status === st ? '' : st, record.note);
+                                }}
+                                className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                                  isAttendanceReadOnly
+                                    ? record.status === st
+                                      ? (st === 'Hadir' ? 'bg-emerald-700/60 text-white' : st === 'Alfa' ? 'bg-rose-700/60 text-white' : 'bg-amber-700/60 text-white')
+                                      : 'bg-slate-900/50 text-slate-600 opacity-50 cursor-not-allowed'
+                                    : record.status === st 
+                                    ? (st === 'Hadir' ? 'bg-emerald-600 text-white shadow' : st === 'Alfa' ? 'bg-rose-600 text-white shadow' : 'bg-amber-600 text-white shadow') 
+                                    : 'bg-slate-900 text-slate-400 hover:text-white cursor-pointer'
+                                }`}
+                              >
+                                {st}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              disabled={isAttendanceReadOnly}
+                              onClick={() => {
+                                if (isAttendanceReadOnly) return;
+                                handleSaveAttendance(student.id, '', '');
+                              }}
+                              title="Batalkan status absensi"
+                              className={`py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1 ${
+                                isAttendanceReadOnly
+                                  ? 'bg-slate-900 text-slate-600 opacity-40 cursor-not-allowed'
+                                  : !record.status 
+                                  ? 'bg-slate-900 text-slate-600 border border-slate-800/80' 
+                                  : 'bg-rose-950/40 text-rose-300 border border-rose-800/50 cursor-pointer'
+                              }`}
+                            >
+                              <RotateCcw size={11} />
+                              <span>Batal</span>
+                            </button>
+                          </div>
+
+                          <input 
+                            type="text" 
+                            placeholder={isAttendanceReadOnly ? "Presensi terkunci..." : "Catatan..."}
+                            disabled={isAttendanceReadOnly}
+                            value={record.note}
+                            onChange={(e) => !isAttendanceReadOnly && handleSaveAttendance(student.id, record.status, e.target.value)}
+                            className={`w-full text-xs px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 placeholder-slate-600 ${
+                              isAttendanceReadOnly ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Officer Submit & Draft Status Action Bar */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl mt-2">
+                    <div className="text-xs text-slate-400">
+                      Status: <strong className={currentSession?.isSubmitted ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                        {currentSession?.isSubmitted ? '✓ Resmi Ter-submit' : '⏳ Draf (Belum Masuk Rekap)'}
+                      </strong>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <button 
+                        type="button"
+                        disabled={isAttendanceReadOnly}
+                        onClick={() => !isAttendanceReadOnly && handleSaveCurrentSession(false)}
+                        className={`px-4 py-2.5 font-bold rounded-xl text-xs flex items-center gap-2 transition-colors ${
+                          isAttendanceReadOnly
+                            ? 'bg-slate-800/60 text-slate-500 opacity-60 cursor-not-allowed'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200 cursor-pointer'
+                        }`}
+                      >
+                        <Save size={15} />
+                        <span>Simpan Draf</span>
+                      </button>
+
+                      {!currentSession?.isSubmitted ? (
+                        <button 
+                          type="button"
+                          disabled={isAttendanceReadOnly}
+                          onClick={() => !isAttendanceReadOnly && setIsSubmitConfirmOpen(true)}
+                          className={`px-5 py-2.5 font-black rounded-xl text-xs flex items-center gap-2 transition-all ${
+                            isAttendanceReadOnly
+                              ? 'bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed border border-slate-700'
+                              : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-950 active:scale-95 cursor-pointer'
+                          }`}
+                        >
+                          <Send size={15} />
+                          <span>🚀 Submit Presensi Sesi Ini</span>
+                        </button>
+                      ) : (
+                        <button 
+                          type="button"
+                          disabled={isAttendanceReadOnly}
+                          onClick={() => !isAttendanceReadOnly && handleSaveCurrentSession(true)}
+                          className={`px-5 py-2.5 font-bold rounded-xl text-xs flex items-center gap-2 transition-all ${
+                            isAttendanceReadOnly
+                              ? 'bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed'
+                              : 'bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white shadow-lg shadow-purple-950 active:scale-95 cursor-pointer'
+                          }`}
+                        >
+                          <Save size={15} />
+                          <span>Simpan Perubahan</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+            );
+          })()}
 
           {petugasTab === 'announcements' && (
             <div className="space-y-4">
