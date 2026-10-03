@@ -719,6 +719,47 @@ export default function App() {
     }
   }, [attendances.length]);
 
+  // Otomatisasi Pengumuman Hari-H (Auto Announcement for Practice Day)
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const sessionsToday = attendances.filter(a => a.date === todayStr);
+    
+    if (sessionsToday.length > 0) {
+      sessionsToday.forEach(session => {
+        // Gunakan ID unik berdasarkan tanggal dan ID sesi agar tidak duplikat
+        const autoId = `auto-practice-${session.date}-${session.id || 'default'}`;
+        
+        // Cek apakah pengumuman otomatis ini sudah ada di state saat ini
+        const alreadyExists = announcements.some(ann => ann.id === autoId);
+        
+        if (!alreadyExists) {
+          const newAnn: Announcement = {
+            id: autoId,
+            title: `📢 Agenda Hari Ini: ${session.sessionName || 'Latihan Rutin'}`,
+            content: `Halo rekan-rekan! Hari ini kita memiliki jadwal latihan "${session.sessionName || 'Latihan Rutin'}"${session.scheduledTime ? ' pada pukul ' + session.scheduledTime : ''}${session.location ? ' bertempat di ' + session.location : ''}. Mohon kehadirannya tepat waktu dan persiapkan instrumen masing-masing. Semangat!`,
+            category: 'schedule',
+            targetAudience: (session.targetSection as any) || 'All',
+            author: 'Sistem PGT',
+            authorRole: 'Bot Notifikasi',
+            createdAt: todayStr,
+            pinned: true
+          };
+          
+          // Simpan ke state lokal untuk feedback instan (subscription akan memperbarui ini nanti juga)
+          setAnnouncements(prev => {
+            if (prev.some(a => a.id === autoId)) return prev;
+            return [newAnn, ...prev];
+          });
+          
+          // Simpan ke cloud database untuk persistensi
+          saveAnnouncementToCloud(newAnn).catch(err => {
+            console.error('[Automation] Gagal menyimpan pengumuman otomatis:', err);
+          });
+        }
+      });
+    }
+  }, [attendances.length, announcements.length]);
+
   // Local Storage Synchronizations
   useEffect(() => {
     localStorage.setItem('pgt_system_users', JSON.stringify(systemUsers));
