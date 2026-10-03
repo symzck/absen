@@ -326,18 +326,29 @@ export default function App() {
     return INITIAL_STUDENTS.filter(s => !deletedIds.has(s.id));
   });
 
-  // Announcements State (Synced with localStorage and Cloud Firestore)
+  // Helper for tracking explicitly deleted announcement IDs to guarantee they never reappear upon refresh
+  const getDeletedAnnouncementIds = (): Set<string> => {
+    try {
+      const saved = localStorage.getItem('pgt_deleted_announcement_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  };
+
+  // Announcements State (Synced with localStorage and Cloud Firestore, respecting deletions)
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
+    const deletedIds = getDeletedAnnouncementIds();
     const saved = localStorage.getItem('pgt_announcements');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((a: Announcement) => a && a.id && !deletedIds.has(a.id));
         }
       } catch (e) {}
     }
-    return INITIAL_ANNOUNCEMENTS;
+    return INITIAL_ANNOUNCEMENTS.filter(a => !deletedIds.has(a.id));
   });
 
   // Member & User delete modal state
@@ -483,16 +494,34 @@ export default function App() {
 
     // Real-time listener for announcements
     const unsubAnnouncements = subscribeAnnouncements((remoteAnn) => {
-      if (remoteAnn && remoteAnn.length > 0) {
+      if (Array.isArray(remoteAnn)) {
+        const deletedIds = getDeletedAnnouncementIds();
         setAnnouncements(prev => {
           const map = new Map<string, Announcement>();
-          INITIAL_ANNOUNCEMENTS.forEach(a => map.set(a.id, a));
-          if (prev && prev.length > 0) {
-            prev.forEach(a => map.set(a.id, { ...map.get(a.id), ...a }));
-          }
-          remoteAnn.forEach(ra => {
-            map.set(ra.id, { ...map.get(ra.id), ...ra });
+
+          // 1. Seed initial announcements if not deleted
+          INITIAL_ANNOUNCEMENTS.forEach(a => {
+            if (!deletedIds.has(a.id)) {
+              map.set(a.id, a);
+            }
           });
+
+          // 2. Overwrite with Cloud Firestore announcements if not deleted
+          remoteAnn.forEach(ra => {
+            if (!deletedIds.has(ra.id)) {
+              map.set(ra.id, ra);
+            }
+          });
+
+          // 3. Merge local announcements if not deleted
+          if (prev && prev.length > 0) {
+            prev.forEach(a => {
+              if (!deletedIds.has(a.id)) {
+                map.set(a.id, { ...map.get(a.id), ...a });
+              }
+            });
+          }
+
           const merged = Array.from(map.values()).sort((a, b) => {
             if (a.pinned && !b.pinned) return -1;
             if (!a.pinned && b.pinned) return 1;
@@ -1326,6 +1355,13 @@ export default function App() {
 
   // Announcements Handlers
   const handleSaveAnnouncement = async (item: Announcement) => {
+    // Unmark ID from deleted set if re-saving/creating
+    const deletedSet = getDeletedAnnouncementIds();
+    if (deletedSet.has(item.id)) {
+      deletedSet.delete(item.id);
+      localStorage.setItem('pgt_deleted_announcement_ids', JSON.stringify(Array.from(deletedSet)));
+    }
+
     setAnnouncements(prev => {
       const next = prev.some(a => a.id === item.id)
         ? prev.map(a => a.id === item.id ? item : a)
@@ -1347,12 +1383,19 @@ export default function App() {
   };
 
   const handleDeleteAnnouncement = async (id: string) => {
+    // 1. Permanently record ID in deleted set so refresh & real-time sync never resurrect it
+    const deletedSet = getDeletedAnnouncementIds();
+    deletedSet.add(id);
+    localStorage.setItem('pgt_deleted_announcement_ids', JSON.stringify(Array.from(deletedSet)));
+
+    // 2. Remove from local state & localStorage
     setAnnouncements(prev => {
       const next = prev.filter(a => a.id !== id);
       localStorage.setItem('pgt_announcements', JSON.stringify(next));
       return next;
     });
 
+    // 3. Delete from Cloud Firestore
     try {
       await deleteAnnouncementFromCloud(id);
     } catch (e) {
