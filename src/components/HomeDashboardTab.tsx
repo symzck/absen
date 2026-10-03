@@ -1,4 +1,5 @@
 import React from 'react';
+import { sortSessionsByClosest } from './OfficerSubmissionGuide';
 import { 
   ClipboardList, 
   Edit3, 
@@ -70,10 +71,10 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
   });
 
   // Scheduled practice sessions list:
-  // For Admin: show all. For regular user/petugas: hide finished/closed sessions from the surface
-  const scheduledSessions = [...attendances]
-    .filter(a => isAdmin || (!a.isClosed && (a.date >= todayStr || a.isSubmitted === false)))
-    .sort((a, b) => b.date.localeCompare(a.date));
+  // Sort by closest date/time first (today/closest upcoming session #1)
+  const scheduledSessions = sortSessionsByClosest(
+    attendances.filter(a => isAdmin || (!a.isClosed && (a.date >= todayStr || a.isSubmitted === false)))
+  );
   const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
 
   // Current session calculations

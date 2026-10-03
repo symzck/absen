@@ -5,7 +5,7 @@ import {
   Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
-import { calculateSessionCountdown } from './OfficerSubmissionGuide';
+import { calculateSessionCountdown, sortSessionsByClosest } from './OfficerSubmissionGuide';
 
 export interface Student {
   id: number;
@@ -80,10 +80,13 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // For non-admin: COMPLETELY HIDE finished / closed sessions from surface so they cannot tamper with them
-  const availableSessions = isAdmin 
-    ? sessions 
-    : sessions.filter(s => !s.isClosed && (s.date >= todayStr || s.isSubmitted === false));
+  // For non-admin: COMPLETELY HIDE finished / closed sessions from surface
+  // Sort all sessions by closest date/time first (today / closest upcoming session #1)
+  const availableSessions = sortSessionsByClosest(
+    isAdmin 
+      ? sessions 
+      : sessions.filter(s => !s.isClosed && (s.date >= todayStr || s.isSubmitted === false))
+  );
 
   // Filter sessions based on tab & query
   const filteredSessions = availableSessions.filter(s => {

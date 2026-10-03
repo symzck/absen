@@ -17,7 +17,7 @@ import { HomeDashboardTab } from './components/HomeDashboardTab';
 import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
 import { ScheduleSessionModal, BatchScheduleData } from './components/ScheduleSessionModal';
-import { OfficerSubmissionGuide, calculateSessionCountdown } from './components/OfficerSubmissionGuide';
+import { OfficerSubmissionGuide, calculateSessionCountdown, sortSessionsByClosest } from './components/OfficerSubmissionGuide';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -601,9 +601,9 @@ export default function App() {
               merged.push(localSess);
             }
           });
-          merged.sort((a, b) => b.date.localeCompare(a.date));
-          localStorage.setItem('pgt_attendances', JSON.stringify(merged));
-          return merged;
+          const sorted = sortSessionsByClosest(merged);
+          localStorage.setItem('pgt_attendances', JSON.stringify(sorted));
+          return sorted;
         });
       }
     });
@@ -2506,10 +2506,12 @@ export default function App() {
             const isSessionUpcoming = sessionCountdown.isUpcoming;
             const isAttendanceReadOnly = !isPetugasAdmin && (isSessionClosed || isSessionUpcoming);
 
-            // Hide finished/closed sessions from Petugas surface so they cannot tamper with them
-            const selectablePetugasSessions = isPetugasAdmin 
-              ? attendances 
-              : attendances.filter(a => !a.isClosed && (a.date >= new Date().toISOString().split('T')[0] || a.isSubmitted === false));
+            // Hide finished/closed sessions from Petugas surface, sort by closest date/time first
+            const selectablePetugasSessions = sortSessionsByClosest(
+              isPetugasAdmin 
+                ? attendances 
+                : attendances.filter(a => !a.isClosed && (a.date >= new Date().toISOString().split('T')[0] || a.isSubmitted === false))
+            );
 
             return (
               <div className="space-y-5">

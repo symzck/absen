@@ -82,6 +82,43 @@ export function calculateSessionCountdown(dateStr: string, timeStr?: string): Co
   };
 }
 
+export function sortSessionsByClosest<T extends { date: string; scheduledTime?: string }>(sessions: T[]): T[] {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const parseSessionTime = (s: T): number => {
+    let startHour = 8;
+    let startMinute = 0;
+    if (s.scheduledTime) {
+      const match = s.scheduledTime.match(/(\d{1,2})[:.](\d{2})/);
+      if (match) {
+        startHour = parseInt(match[1], 10);
+        startMinute = parseInt(match[2], 10);
+      }
+    }
+    const parts = s.date.split('-').map(Number);
+    if (parts.length < 3) return 0;
+    const [y, m, d] = parts;
+    return new Date(y, m - 1, d, startHour, startMinute, 0).getTime();
+  };
+
+  return [...sessions].sort((a, b) => {
+    const isAUpcoming = a.date >= todayStr;
+    const isBUpcoming = b.date >= todayStr;
+
+    if (isAUpcoming && !isBUpcoming) return -1;
+    if (!isAUpcoming && isBUpcoming) return 1;
+
+    const timeA = parseSessionTime(a);
+    const timeB = parseSessionTime(b);
+
+    if (isAUpcoming && isBUpcoming) {
+      return timeA - timeB;
+    } else {
+      return timeB - timeA;
+    }
+  });
+}
+
 interface OfficerSubmissionGuideProps {
   sessionName: string;
   selectedDate: string;
