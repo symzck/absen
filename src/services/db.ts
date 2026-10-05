@@ -389,6 +389,7 @@ export interface Announcement {
   authorRole: string;
   createdAt: string;
   pinned?: boolean;
+  isAuto?: boolean;
 }
 
 export const subscribeAnnouncements = (
@@ -414,7 +415,8 @@ export const subscribeAnnouncements = (
             author: data.author || 'Admin PGT',
             authorRole: data.authorRole || 'Administrator',
             createdAt: data.createdAt || new Date().toISOString().split('T')[0],
-            pinned: Boolean(data.pinned)
+            pinned: Boolean(data.pinned),
+            isAuto: Boolean(data.isAuto)
           });
         });
         // Sort: pinned first, then by date descending
@@ -448,6 +450,7 @@ export const saveAnnouncementToCloud = async (announcement: Announcement): Promi
         authorRole: announcement.authorRole,
         createdAt: announcement.createdAt,
         pinned: Boolean(announcement.pinned),
+        isAuto: Boolean(announcement.isAuto),
         updatedAt: new Date().toISOString()
       }, { merge: true }),
       3500,

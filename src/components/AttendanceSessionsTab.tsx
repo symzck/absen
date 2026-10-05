@@ -80,13 +80,9 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // For non-admin: COMPLETELY HIDE finished / closed sessions from surface
+  // Available sessions: show all sessions for both Admin and Petugas for complete visibility
   // Sort all sessions by closest date/time first (today / closest upcoming session #1)
-  const availableSessions = sortSessionsByClosest(
-    isAdmin 
-      ? sessions 
-      : sessions.filter(s => !s.isClosed && (s.date >= todayStr || s.isSubmitted === false))
-  );
+  const availableSessions = sortSessionsByClosest(sessions);
 
   // Filter sessions based on tab & query
   const filteredSessions = availableSessions.filter(s => {
@@ -276,58 +272,52 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-purple-900/40 text-purple-300 border border-purple-700/40 text-[11px] font-semibold mb-2">
               <Sparkles size={12} className="text-amber-400" /> 
-              {isAdmin ? 'Panel Kontrol Administrator — Kelola & Tutup Sesi' : 'Jadwal & Agenda Sesi Latihan Korps'}
+              Jadwal & Agenda Sesi Latihan Korps
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight">
-              {isAdmin 
-                ? `Kelola & Tutup Sesi Latihan (${sessions.length} Sesi)` 
-                : `Daftar Sesi Latihan Aktif (${availableSessions.length} Sesi)`}
+              Manajemen & Jadwal Sesi Latihan ({sessions.length} Sesi)
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {isAdmin 
-                ? 'Pantau status sesi, tutup sesi yang expired atau selesai, koreksi absensi, atau lakukan submit resmi ke laporan korps.' 
-                : 'Pantau jadwal latihan aktif yang ditugaskan oleh Administrator dan lakukan pengisian presensi sesuai jadwal.'}
+              Pantau seluruh agenda sesi latihan, countdown pelaksanaan hari H, status penguncian sesi, dan kelola pengisian presensi korps.
             </p>
           </div>
 
-          {/* Action Buttons: Batch Close & Schedule (Admin Only) */}
-          {isAdmin && (
-            <div className="flex flex-wrap items-center gap-2">
-              {expiredCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setIsCloseAllExpiredModalOpen(true)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-                  title="Tutup semua sesi yang tanggalnya sudah lewat"
-                >
-                  <Lock size={13} className="text-rose-400" />
-                  <span>Tutup {expiredCount} Sesi Expired</span>
-                </button>
-              )}
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && expiredCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsCloseAllExpiredModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-950/80 hover:bg-rose-900 border border-rose-700/60 text-rose-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                title="Tutup semua sesi yang tanggalnya sudah lewat"
+              >
+                <Lock size={13} className="text-rose-400" />
+                <span>Tutup {expiredCount} Sesi Expired</span>
+              </button>
+            )}
 
-              {finishedUnclosedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setIsCloseAllFinishedModalOpen(true)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-                  title="Tutup semua sesi yang sudah disubmit"
-                >
-                  <Lock size={13} className="text-indigo-400" />
-                  <span>Tutup {finishedUnclosedCount} Sesi Selesai</span>
-                </button>
-              )}
+            {isAdmin && finishedUnclosedCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsCloseAllFinishedModalOpen(true)}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200 flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                title="Tutup semua sesi yang sudah disubmit"
+              >
+                <Lock size={13} className="text-indigo-400" />
+                <span>Tutup {finishedUnclosedCount} Sesi Selesai</span>
+              </button>
+            )}
 
-              {onOpenScheduleModal && (
-                <button
-                  type="button"
-                  onClick={onOpenScheduleModal}
-                  className="px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>+ Jadwalkan Sesi Baru</span>
-                </button>
-              )}
-            </div>
-          )}
+            {onOpenScheduleModal && (
+              <button
+                type="button"
+                onClick={onOpenScheduleModal}
+                className="px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>+ Jadwalkan Sesi Baru</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter Pills & Search */}

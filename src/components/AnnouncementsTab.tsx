@@ -435,6 +435,13 @@ Pertahankan kekompakan, konsistensi ritme, dan semangat kebersamaan korps kita!`
                         </span>
                       )}
 
+                      {ann.isAuto && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-blue-400 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-md">
+                          <Sparkles size={11} className="text-blue-400" />
+                          <span>BOT SISTEM</span>
+                        </span>
+                      )}
+
                       {ann.pinned && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-md">
                           <Pin size={11} className="fill-amber-400" />

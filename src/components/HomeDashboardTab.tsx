@@ -72,9 +72,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
 
   // Scheduled practice sessions list:
   // Sort by closest date/time first (today/closest upcoming session #1)
-  const scheduledSessions = sortSessionsByClosest(
-    attendances.filter(a => isAdmin || (!a.isClosed && (a.date >= todayStr || a.isSubmitted === false)))
-  );
+  const scheduledSessions = sortSessionsByClosest(attendances);
   const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
 
   // Current session calculations
@@ -116,7 +114,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
 
   const handleSelectSessionDate = (dateStr: string) => {
     if (onSelectDate) onSelectDate(dateStr);
-    onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance');
+    onNavigateTab('attendance');
     triggerToast(`Sesi latihan tanggal ${dateStr} dipilih.`, 'info');
   };
 
@@ -149,13 +147,22 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
               </span>
               <span>·</span>
               <span className="flex items-center gap-1.5 text-slate-300 font-medium">
+                <Clock size={14} className="text-amber-400" />
+                {isTodayPracticeDay ? (
+                  <strong className="text-emerald-400">Hari Ini Ada Jadwal Latihan!</strong>
+                ) : (
+                  <span>Bukan Hari Latihan Reguler</span>
+                )}
+              </span>
+              <span>·</span>
+              <span className="flex items-center gap-1.5 text-slate-300 font-medium">
                 <Music size={14} className="text-amber-400" />
                 Sesi: <strong className="text-amber-300">{currentSessionName || 'Latihan Rutin'}</strong>
               </span>
             </div>
           </div>
 
-          {/* Quick Session Status Capsule */}
+          {/* Quick Session Status Capsule & Action */}
           <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto shrink-0">
             <div className={`p-4 rounded-2xl border backdrop-blur-sm shadow-lg ${
               isTodayPracticeDay 
@@ -171,7 +178,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 <div>
                   <div className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">Status Jadwal Hari Ini</div>
                   <div className="text-sm font-extrabold text-white">
-                    {isTodayPracticeDay ? 'Jadwal Latihan Resmi Active' : 'Bukan Jadwal Latihan Harian'}
+                    {isTodayPracticeDay ? 'Jadwal Latihan Resmi Aktif' : 'Bukan Jadwal Latihan Harian'}
                   </div>
                 </div>
               </div>
@@ -179,7 +186,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
 
             <button
               type="button"
-              onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance')}
+              onClick={() => onNavigateTab('attendance')}
               className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-purple-950/50 transition-all active:scale-95 cursor-pointer"
             >
               <ClipboardList size={16} />
@@ -271,7 +278,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             )}
             <button
               type="button"
-              onClick={() => onNavigateTab(isAdmin ? 'edit_absensi' : 'sessions')}
+              onClick={() => onNavigateTab('sessions')}
               className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <span>Semua Sesi ({scheduledSessions.length})</span>
@@ -402,77 +409,75 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
         )}
       </div>
 
-      {/* 3.5 ARAHAN PETUGAS LAPANGAN SAAT SESI LATIHAN DITAMBAHKAN */}
-      {!isAdmin && (
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 text-[11px] font-bold mb-1">
-                <Sparkles size={12} className="text-amber-400" /> Panduan & Arahan Petugas Lapangan
-              </div>
-              <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                Alur Kerja & Panduan Submit Presensi Sesi Latihan
-              </h2>
-              <p className="text-xs text-slate-300 mt-0.5">
-                {scheduledSessions.length > 0
-                  ? `Admin telah menjadwalkan ${scheduledSessions.length} sesi latihan resmi. Ikuti alur submit berikut:`
-                  : 'Ikuti tahapan berikut setiap kali Administrator menjadwalkan sesi latihan korps:'}
-              </p>
+      {/* 3.5 ARAHAN & PANDUAN KERJA PRESENSI SESI LATIHAN */}
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 text-[11px] font-bold mb-1">
+              <Sparkles size={12} className="text-amber-400" /> Panduan & Alur Kerja Latihan
             </div>
-
-            {scheduledSessions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const targetDate = scheduledSessions[0]?.date || todayStr;
-                  handleSelectSessionDate(targetDate);
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
-              >
-                <span>Buka Sesi Terdekat ({scheduledSessions[0]?.date})</span>
-                <ArrowRight size={14} />
-              </button>
-            )}
+            <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+              Alur Kerja Presensi Sesi Latihan Marching Band
+            </h2>
+            <p className="text-xs text-slate-300 mt-0.5">
+              {scheduledSessions.length > 0
+                ? `Tersedia ${scheduledSessions.length} sesi latihan korps. Ikuti alur pelaksanaan presensi berikut:`
+                : 'Ikuti tahapan berikut setiap kali ada sesi latihan korps yang dijadwalkan:'}
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">1</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Pilih Sesi</span>
-              </div>
-              <h4 className="font-extrabold text-sm text-white">Buka Sesi Latihan</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Pilih sesi latihan resmi yang telah dijadwalkan oleh Admin dari menu dropdown atau klik <em>"Presensi Sesi Ini"</em> pada daftar sesi.
-              </p>
-            </div>
+          {scheduledSessions.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const targetDate = scheduledSessions[0]?.date || todayStr;
+                handleSelectSessionDate(targetDate);
+              }}
+              className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
+            >
+              <span>Buka Sesi Terdekat ({scheduledSessions[0]?.date})</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
+        </div>
 
-            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">2</span>
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Isi Presensi</span>
-              </div>
-              <h4 className="font-extrabold text-sm text-white">Tandai Status Pemain</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Tandai kehadiran (Hadir, Sakit, Izin, Alfa). Gunakan tombol <em>"Hadir Semua"</em> atau <em>"Mode Presensi Kertas"</em> untuk efisiensi.
-              </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">1</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Pilih Sesi</span>
             </div>
+            <h4 className="font-extrabold text-sm text-white">Buka Sesi Latihan</h4>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Pilih tanggal sesi latihan resmi dari daftar jadwal atau klik <em>"Presensi Sesi Ini"</em> untuk mulai mendata.
+            </p>
+          </div>
 
-            <div className="p-4 bg-emerald-950/20 border border-emerald-800/60 rounded-2xl space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="w-6 h-6 rounded-xl bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-black flex items-center justify-center">3</span>
-                <span className="text-[10px] font-bold text-emerald-400 uppercase">Submit Resmi</span>
-              </div>
-              <h4 className="font-extrabold text-sm text-emerald-300">Finalisasi & Submit</h4>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Klik tombol <strong>"Submit Presensi Sesi Ini"</strong> di bawah tabel dan konfirmasi. Data otomatis masuk ke Rekapitulasi & Leaderboard Disiplin Korps.
-              </p>
+          <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="w-6 h-6 rounded-xl bg-purple-950 border border-purple-700 text-purple-300 text-xs font-black flex items-center justify-center">2</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Isi Kehadiran</span>
             </div>
+            <h4 className="font-extrabold text-sm text-white">Tandai Status Pemain</h4>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Tandai status kehadiran pemain (Hadir, Sakit, Izin, Alfa). Gunakan tombol <em>"Hadir Semua"</em> atau <em>"Mode Presensi Kertas"</em>.
+            </p>
+          </div>
+
+          <div className="p-4 bg-emerald-950/20 border border-emerald-800/60 rounded-2xl space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="w-6 h-6 rounded-xl bg-emerald-950 border border-emerald-700 text-emerald-300 text-xs font-black flex items-center justify-center">3</span>
+              <span className="text-[10px] font-bold text-emerald-400 uppercase">Submit Laporan</span>
+            </div>
+            <h4 className="font-extrabold text-sm text-emerald-300">Finalisasi & Submit</h4>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Klik <strong>"Finalisasi Presensi"</strong> setelah seluruh anggota diabsen. Data langsung tersinkron ke Rekapitulasi & Leaderboard.
+            </p>
           </div>
         </div>
-      )}
+      </div>
 
-      {/* 4. QUICK NAVIGATION TILES (MENU PINTAS UTAMA) */}
+      {/* 4. QUICK NAVIGATION TILES (MENU PINTAS UTAMA - SAMA UNTUK SEMUA PENGGUNA) */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -481,82 +486,38 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
               Menu Pintas Utama
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Akses cepat seluruh fitur aplikasi dalam satu sentuhan.
+              Akses cepat seluruh fitur aplikasi dalam satu sentuhan (Tersedia untuk Admin dan Petugas).
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {/* Tile 1: Role-Specific Action (Input Presensi vs Scorecard) */}
-          {currentUser.role === 'personalia' ? (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('my_history')}
-              className="p-4 rounded-2xl bg-indigo-950/30 hover:bg-indigo-900/40 border border-indigo-500/30 hover:border-indigo-400 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 group-hover:scale-110 flex items-center justify-center transition-transform shadow-lg">
-                  <Clock size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-indigo-300 transition-colors">
-                  Riwayat Kehadiran Saya
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Monitor persentase disiplin
-                </div>
-              </div>
-            </button>
-          ) : (isAdmin || currentUser.role === 'petugas') ? (
-            <button
-              type="button"
-              onClick={() => onNavigateTab(isAdmin ? 'admin_dashboard' : 'attendance')}
-              className="p-4 rounded-2xl bg-purple-950/30 hover:bg-purple-900/40 border border-purple-500/30 hover:border-purple-400 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-600/20 text-purple-400 group-hover:scale-110 flex items-center justify-center transition-transform shadow-lg">
-                  <ClipboardList size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-purple-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-purple-300 transition-colors">
-                  Input Presensi
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Isi & submit daftar hadir
-                </div>
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('recap')}
-              className="p-4 rounded-2xl bg-amber-950/30 hover:bg-amber-900/40 border border-amber-500/30 hover:border-amber-400 text-left transition-all group flex flex-col justify-between cursor-pointer"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform shadow-lg">
-                  <BarChart3 size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
-              </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                  Rekapitulasi Korps
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Pantau disiplin seluruh pemain
-                </div>
-              </div>
-            </button>
-          )}
-
-          {/* Tile 2: Schedule / Management */}
+          {/* Tile 1: Presensi Latihan */}
           <button
             type="button"
-            onClick={() => onNavigateTab(isAdmin ? 'edit_absensi' : 'sessions')}
+            onClick={() => onNavigateTab('attendance')}
+            className="p-4 rounded-2xl bg-purple-950/30 hover:bg-purple-900/40 border border-purple-500/30 hover:border-purple-400 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/20 text-purple-400 group-hover:scale-110 flex items-center justify-center transition-transform shadow-lg">
+                <ClipboardList size={20} />
+              </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-purple-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white group-hover:text-purple-300 transition-colors">
+                Presensi Latihan
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                Input & monitoring presensi
+              </div>
+            </div>
+          </button>
+
+          {/* Tile 2: Jadwal & Sesi Latihan */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('sessions')}
             className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-purple-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
           >
             <div className="flex items-center justify-between mb-3">
@@ -567,7 +528,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
             <div>
               <div className="font-bold text-sm text-white group-hover:text-purple-300 transition-colors">
-                {isAdmin ? 'Kelola & Submit Sesi' : 'Jadwal Latihan'}
+                Jadwal & Sesi Latihan
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5">
                 {attendances.length} sesi terdaftar
@@ -575,7 +536,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
           </button>
 
-          {/* Tile 3: Announcements */}
+          {/* Tile 3: Papan Pengumuman */}
           <button
             type="button"
             onClick={() => onNavigateTab('announcements')}
@@ -599,90 +560,105 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </div>
           </button>
 
-          {/* Tile 4: Database Pemain (Only for relevant roles) */}
-          {currentUser.role !== 'personalia' ? (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('members')}
-              className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 group-hover:scale-110 flex items-center justify-center transition-transform">
-                  <Users size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-emerald-400 transition-colors" />
+          {/* Tile 4: Database Pemain */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('members')}
+            className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-emerald-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 group-hover:scale-110 flex items-center justify-center transition-transform">
+                <Users size={20} />
               </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors">
-                  Database Pemain
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {students.length} pemain terdaftar
-                </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-emerald-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white group-hover:text-emerald-300 transition-colors">
+                Database Pemain
               </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => onNavigateTab('recap')}
-              className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-amber-600/60 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform">
-                  <BarChart3 size={20} />
-                </div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                {students.length} pemain terdaftar
               </div>
-              <div>
-                <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
-                  Rekap & Ranking
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  Peringkat disiplin section
-                </div>
-              </div>
-            </button>
-          )}
+            </div>
+          </button>
 
-          {/* Admin Exclusive: Google Sheets & User Management */}
-          {isAdmin && (
-            <>
-              <button
-                type="button"
-                onClick={() => onNavigateTab('google_sheets')}
-                className="p-4 rounded-2xl bg-emerald-950/20 hover:bg-emerald-900/30 border border-emerald-500/20 hover:border-emerald-500/50 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
-                    <FileSpreadsheet size={20} />
-                  </div>
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Master</span>
-                </div>
-                <div>
-                  <div className="font-bold text-sm text-white">Google Sheets</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Ekspor data ke cloud</div>
-                </div>
-              </button>
+          {/* Tile 5: Rekapitulasi & Leaderboard */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('recap')}
+            className="p-4 rounded-2xl bg-amber-950/20 hover:bg-amber-900/30 border border-amber-500/20 hover:border-amber-400/50 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 group-hover:scale-110 flex items-center justify-center transition-transform shadow-lg">
+                <BarChart3 size={20} />
+              </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-amber-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white group-hover:text-amber-300 transition-colors">
+                Rekap & Leaderboard
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                Ranking disiplin section
+              </div>
+            </div>
+          </button>
 
-              <button
-                type="button"
-                onClick={() => onNavigateTab('manage_users')}
-                className="p-4 rounded-2xl bg-amber-950/20 hover:bg-amber-900/30 border border-amber-500/20 hover:border-amber-500/50 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-600/20 text-amber-400 flex items-center justify-center">
-                    <Shield size={20} />
-                  </div>
-                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">Admin</span>
-                </div>
-                <div>
-                  <div className="font-bold text-sm text-white">Kelola Petugas</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">Atur hak akses akun</div>
-                </div>
-              </button>
-            </>
-          )}
-        </div>      </div>
+          {/* Tile 6: Google Sheets Sync */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('google_sheets')}
+            className="p-4 rounded-2xl bg-emerald-950/20 hover:bg-emerald-900/30 border border-emerald-500/20 hover:border-emerald-500/50 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center">
+                <FileSpreadsheet size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">Cloud</span>
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white">Google Sheets</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Sinkron & ekspor spreadsheet</div>
+            </div>
+          </button>
+
+          {/* Tile 7: Kelola / Direktori Petugas */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('manage_users')}
+            className="p-4 rounded-2xl bg-slate-900 border border-slate-800 hover:border-purple-500/40 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center">
+                <Shield size={20} />
+              </div>
+              <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Tim</span>
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white">Kelola & Kontak Petugas</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Daftar akun & pengurus korps</div>
+            </div>
+          </button>
+
+          {/* Tile 8: Ringkasan Sesi */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab('my_history')}
+            className="p-4 rounded-2xl bg-indigo-950/20 hover:bg-indigo-900/30 border border-indigo-500/20 hover:border-indigo-400/50 text-left transition-all group flex flex-col justify-between cursor-pointer shadow-md"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center">
+                <Clock size={20} />
+              </div>
+              <ArrowRight size={14} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
+            </div>
+            <div>
+              <div className="font-bold text-sm text-white">Ringkasan Sesi</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Statistik & log latihan</div>
+            </div>
+          </button>
+        </div>
+      </div>
 
       {/* 5. PAPAN INFORMASI & PENGUMUMAN TERBARU (LIVE CARDS) */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
