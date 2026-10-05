@@ -7,7 +7,7 @@ import {
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
   Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
   Home, Megaphone, Plus, Pin, Calendar, Timer, ArrowLeft, ArrowRight, Undo2,
-  Star, Award, Flame, Crown, Music
+  Star, Award, Flame, Crown, Music, FileText
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -807,50 +807,99 @@ export default function App() {
     }
   }, [attendances.length]);
 
-  // Otomatisasi Pengumuman Hari-H (Auto Announcement for Practice Day)
+  // Otomatisasi Bot Notifikasi Pengumuman Hari-H:
+  // 1. Membuat notifikasi otomatis untuk sesi aktif hari ini (Hari-H)
+  // 2. Otomatis memperbarui/mengganti notifikasi jika data sesi berubah
+  // 3. Otomatis menghapus notifikasi ketika sesi sudah selesai/ditutup (isClosed), expired, atau tanggalnya sudah lewat
   useEffect(() => {
-    // Tunggu hingga terkoneksi ke cloud agar tidak terjadi duplikasi saat data masih loading
     if (syncStatus === 'connecting') return;
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const sessionsToday = attendances.filter(a => a.date === todayStr);
-    
-    if (sessionsToday.length > 0) {
-      sessionsToday.forEach(session => {
-        // Gunakan ID unik berdasarkan tanggal dan ID sesi agar tidak duplikat
-        const autoId = `auto-practice-${session.date}-${session.id || 'default'}`;
-        
-        // Cek apakah pengumuman otomatis ini sudah ada di state saat ini
-        const alreadyExists = announcements.some(ann => ann.id === autoId);
-        
-        if (!alreadyExists) {
-          const newAnn: Announcement = {
-            id: autoId,
-            title: `📢 Agenda Hari Ini: ${session.sessionName || 'Latihan Rutin'}`,
-            content: `Halo rekan-rekan! Hari ini kita memiliki jadwal latihan "${session.sessionName || 'Latihan Rutin'}"${session.scheduledTime ? ' pada pukul ' + session.scheduledTime : ''}${session.location ? ' bertempat di ' + session.location : ''}. Mohon kehadirannya tepat waktu dan persiapkan instrumen masing-masing. Semangat!`,
-            category: 'schedule',
-            targetAudience: (session.targetSection as any) || 'All',
-            author: 'Sistem PGT',
-            authorRole: 'Bot Notifikasi',
+
+    // Temukan pengumuman bot otomatis yang ada di sistem
+    const autoAnnouncements = announcements.filter(
+      ann => ann.isAuto || ann.id.startsWith('auto-practice-') || ann.authorRole === 'Bot Notifikasi'
+    );
+
+    // 1. Bersihkan notifikasi yang sudah lewat atau sesinya sudah selesai/ditutup
+    autoAnnouncements.forEach(ann => {
+      // Cari sesi terkait di attendances
+      const matchedSession = attendances.find(s => {
+        const expectedId = `auto-practice-${s.date}-${s.id || 'default'}`;
+        return ann.id === expectedId || (ann.id.includes(s.date) && (!s.id || ann.id.includes(s.id)));
+      });
+
+      const isPastDate = ann.createdAt < todayStr;
+      const isSessionFinishedOrClosed = matchedSession?.isClosed === true;
+      const isSessionExpired = matchedSession ? (matchedSession.date < todayStr && !matchedSession.isClosed) : false;
+      const sessionDeleted = !matchedSession;
+
+      // Hapus otomatis jika sesi sudah selesai/ditutup, tanggal sudah lewat, atau sesi tidak ada lagi
+      if (isPastDate || isSessionFinishedOrClosed || isSessionExpired || sessionDeleted) {
+        setAnnouncements(prev => prev.filter(a => a.id !== ann.id));
+        deleteAnnouncementFromCloud(ann.id).catch(err => {
+          console.warn('[Automation] Gagal menghapus notifikasi lewat/selesai:', err);
+        });
+      }
+    });
+
+    // 2. Pembuatan / Pembaruan Notifikasi untuk Sesi Aktif Hari Ini (Hari-H)
+    // Sesi aktif: tanggal hari ini dan belum ditutup (tidak isClosed)
+    const activeSessionsToday = attendances.filter(a => a.date === todayStr && !a.isClosed);
+
+    activeSessionsToday.forEach(session => {
+      const autoId = `auto-practice-${session.date}-${session.id || 'default'}`;
+      const existingAnn = announcements.find(ann => ann.id === autoId);
+
+      const title = `📢 Agenda Hari Ini: ${session.sessionName || 'Latihan Rutin'}`;
+      const content = `Halo rekan-rekan! Hari ini kita memiliki jadwal latihan "${session.sessionName || 'Latihan Rutin'}"${session.scheduledTime ? ' pada pukul ' + session.scheduledTime : ''}${session.location ? ' bertempat di ' + session.location : ''}. Mohon kehadirannya tepat waktu dan persiapkan instrumen masing-masing. Semangat!`;
+      const targetAudience = (session.targetSection as any) || 'All';
+
+      if (!existingAnn) {
+        // Buat notifikasi baru jika belum ada
+        const newAnn: Announcement = {
+          id: autoId,
+          title,
+          content,
+          category: 'schedule',
+          targetAudience,
+          author: 'Sistem PGT',
+          authorRole: 'Bot Notifikasi',
+          createdAt: todayStr,
+          pinned: true,
+          isAuto: true
+        };
+
+        setAnnouncements(prev => [newAnn, ...prev.filter(a => a.id !== autoId)]);
+        saveAnnouncementToCloud(newAnn).catch(err => {
+          console.error('[Automation] Gagal menyimpan pengumuman bot otomatis:', err);
+        });
+      } else {
+        // Otomatis ganti / perbarui notifikasi jika ada rincian yang berubah
+        const isContentDifferent = 
+          existingAnn.title !== title || 
+          existingAnn.content !== content || 
+          existingAnn.targetAudience !== targetAudience;
+
+        if (isContentDifferent) {
+          const updatedAnn: Announcement = {
+            ...existingAnn,
+            title,
+            content,
+            targetAudience,
             createdAt: todayStr,
             pinned: true,
             isAuto: true
           };
-          
-          // Simpan ke state lokal untuk feedback instan (subscription akan memperbarui ini nanti juga)
-          setAnnouncements(prev => {
-            if (prev.some(a => a.id === autoId)) return prev;
-            return [newAnn, ...prev];
-          });
-          
-          // Simpan ke cloud database untuk persistensi
-          saveAnnouncementToCloud(newAnn).catch(err => {
-            console.error('[Automation] Gagal menyimpan pengumuman otomatis:', err);
+
+          setAnnouncements(prev => prev.map(a => a.id === autoId ? updatedAnn : a));
+          saveAnnouncementToCloud(updatedAnn).catch(err => {
+            console.error('[Automation] Gagal memperbarui pengumuman bot:', err);
           });
         }
-      });
-    }
-  }, [attendances.length, announcements.length]);
+      }
+    });
+  }, [attendances, announcements.length]);
 
   // Local Storage Synchronizations
   useEffect(() => {
@@ -2634,25 +2683,25 @@ export default function App() {
   const MobileTopBar = () => {
     const currentTabItem = menuItems.find(m => m.id === activeTab);
     return (
-      <div className="md:hidden bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white p-3.5 flex justify-between items-center shadow-xl sticky top-0 z-40 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden border border-purple-500/40 bg-black flex items-center justify-center shrink-0 shadow-md">
+      <div className="md:hidden bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white p-3 sm:p-3.5 flex justify-between items-center shadow-xl sticky top-0 z-40 shrink-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 mr-2">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border border-purple-500/40 bg-black flex items-center justify-center shrink-0 shadow-md">
             <img src={OFFICIAL_LOGO_URL} alt="Logo" className="w-full h-full object-contain" />
           </div>
-          <div>
-            <div className="font-extrabold text-sm text-white leading-tight uppercase">PGT MU'ALLIMIN</div>
-            <div className="text-[11px] text-amber-400 font-semibold flex items-center gap-1.5">
-              <span className="text-purple-300 capitalize">{currentTabItem?.label || activeTab}</span>
-              <span className="text-slate-500">·</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded font-bold uppercase border bg-purple-950/80 text-purple-300 border-purple-700/50">
+          <div className="min-w-0 flex-1">
+            <div className="font-extrabold text-xs sm:text-sm text-white leading-tight uppercase truncate">PGT MU'ALLIMIN</div>
+            <div className="text-[10px] sm:text-[11px] text-amber-400 font-semibold flex items-center gap-1.5 truncate">
+              <span className="text-purple-300 capitalize truncate">{currentTabItem?.label || activeTab}</span>
+              <span className="text-slate-500 shrink-0">·</span>
+              <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border bg-purple-950/80 text-purple-300 border-purple-700/50 shrink-0">
                 {currentUser?.role === 'admin' ? 'Admin' : 'Petugas'}
               </span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer">
-            {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />} <span>Menu</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer">
+            {isMobileMenuOpen ? <X size={16} /> : <Menu size={16} />} <span>Menu</span>
           </button>
         </div>
       </div>
@@ -2713,10 +2762,11 @@ export default function App() {
     const sessionCountdown = calculateSessionCountdown(selectedDate, currentAttendanceSession?.scheduledTime);
     const isAttendanceReadOnly = !isUserAdmin && (isSessionClosed || sessionCountdown.isUpcoming);
 
+    const todayDateStr = new Date().toISOString().split('T')[0];
     const selectableSessions = sortSessionsByClosest(
       isUserAdmin 
         ? attendances 
-        : attendances.filter(a => !a.isClosed && (a.date >= new Date().toISOString().split('T')[0] || a.isSubmitted === false))
+        : attendances.filter(a => a.date === todayDateStr)
     );
 
     return (
@@ -2766,10 +2816,17 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                <span className="text-slate-400 mr-2 font-medium">Tanggal:</span>
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer" />
-              </div>
+              {isUserAdmin ? (
+                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
+                  <span className="text-slate-400 mr-2 font-medium">Tanggal:</span>
+                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer" />
+                </div>
+              ) : (
+                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
+                  <Calendar size={13} className="text-purple-400 mr-2" />
+                  <span className="text-slate-300 font-bold">{selectedDate} <span className="text-[10px] text-amber-400 font-medium">(Hari H)</span></span>
+                </div>
+              )}
 
               <select 
                 value={selectedSection}
@@ -2860,12 +2917,109 @@ export default function App() {
                   const record = getCurrentRecord(student.id);
                   return (
                     <tr key={student.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-5 text-center text-xs text-slate-500 tabular-nums">{idx + 1}</td>
-                      <td className="py-3 px-5">
+                      <td className="py-3 px-3 sm:px-5 text-center text-xs text-slate-500 tabular-nums align-top sm:align-middle">{idx + 1}</td>
+                      <td className="py-3 px-3 sm:px-5 align-top sm:align-middle">
                         <div className="font-bold text-slate-100">{student.name}</div>
                         <div className="text-[10px] text-slate-400 uppercase">{student.section} · Kls {student.kelas}</div>
+
+                        {/* Input Keterangan Khusus Tampilan Mobile */}
+                        <div className="sm:hidden mt-2 pt-1.5 border-t border-slate-800/70">
+                          {record.status === 'Izin' ? (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-bold text-blue-400 flex items-center justify-between">
+                                <span className="flex items-center gap-1">
+                                  <FileText size={11} /> Alasan Izin:
+                                </span>
+                                {record.note && !isAttendanceReadOnly && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveAttendance(student.id, record.status, '')}
+                                    className="text-[9px] text-slate-400 hover:text-rose-400"
+                                  >
+                                    Reset
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {['Pulang', 'Organisasi', 'Acara Sekolah', 'Acara Keluarga'].map(reason => {
+                                  const isSelected = record.note === reason;
+                                  return (
+                                    <button
+                                      key={reason}
+                                      type="button"
+                                      disabled={isAttendanceReadOnly}
+                                      onClick={() => handleSaveAttendance(student.id, 'Izin', isSelected ? '' : reason)}
+                                      className={`text-[10px] py-1.5 px-2 rounded-lg font-bold border transition-all text-center ${
+                                        isSelected
+                                          ? 'bg-blue-600 border-blue-400 text-white shadow-sm ring-1 ring-blue-400'
+                                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-blue-500/50 hover:text-blue-300'
+                                      } ${isAttendanceReadOnly ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                                    >
+                                      {reason}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-semibold text-slate-400 flex items-center gap-1 whitespace-nowrap">
+                                  <FileText size={11} className={record.note ? "text-amber-400" : "text-slate-500"} />
+                                  <span>Ket:</span>
+                                </span>
+                                <div className="relative flex-1">
+                                  <input 
+                                    type="text" 
+                                    placeholder={
+                                      record.status === 'Sakit' 
+                                        ? 'Ket sakit (cth: Demam, UKS)...' 
+                                        : record.status === 'Alfa'
+                                        ? 'Ket alfa (cth: Tanpa kabar)...'
+                                        : 'Tulis keterangan...'
+                                    }
+                                    value={record.note || ''} 
+                                    onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)} 
+                                    disabled={isAttendanceReadOnly} 
+                                    className={`w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 border transition-all ${
+                                      record.note 
+                                        ? 'border-amber-500/50 text-amber-200' 
+                                        : 'border-slate-800 text-slate-200 placeholder-slate-600 focus:border-amber-500/60'
+                                    } focus:outline-none focus:ring-1 focus:ring-amber-500/50 disabled:opacity-50 pr-6`}
+                                  />
+                                  {record.note && !isAttendanceReadOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveAttendance(student.id, record.status, '')}
+                                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-400 p-0.5"
+                                      title="Hapus keterangan"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Preset Cepat Sakit di Mobile */}
+                              {record.status === 'Sakit' && !record.note && !isAttendanceReadOnly && (
+                                <div className="flex flex-wrap gap-1 mt-1.5 pl-8">
+                                  {['Demam', 'UKS', 'Flu/Batuk', 'Cedera'].map(preset => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      onClick={() => handleSaveAttendance(student.id, record.status, preset)}
+                                      className="text-[9.5px] px-2 py-0.5 rounded-md bg-slate-800/90 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40 transition-colors cursor-pointer"
+                                    >
+                                      +{preset}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-3 px-5 text-center">
+                      <td className="py-3 px-3 sm:px-5 text-center align-top sm:align-middle">
                         <div className="inline-flex items-center rounded-xl bg-slate-950 p-1 border border-slate-800 gap-1">
                           {['Hadir', 'Sakit', 'Izin', 'Alfa'].map(st => {
                             const active = record.status === st;
@@ -2881,8 +3035,34 @@ export default function App() {
                           })}
                         </div>
                       </td>
-                      <td className="py-3 px-5 hidden sm:table-cell">
-                        <input type="text" placeholder="..." value={record.note} onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)} disabled={isAttendanceReadOnly} className="w-full text-xs px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 focus:outline-none" />
+                      <td className="py-3 px-5 hidden sm:table-cell align-middle">
+                        {record.status === 'Izin' ? (
+                          <select
+                            value={record.note || ''}
+                            onChange={(e) => handleSaveAttendance(student.id, 'Izin', e.target.value)}
+                            disabled={isAttendanceReadOnly}
+                            className={`w-full text-xs px-2.5 py-1.5 rounded-lg border font-semibold cursor-pointer transition-all ${
+                              record.note 
+                                ? 'bg-blue-950/50 border-blue-600 text-blue-200' 
+                                : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+                            }`}
+                          >
+                            <option value="">-- Pilih Alasan Izin --</option>
+                            <option value="Pulang">Pulang</option>
+                            <option value="Organisasi">Organisasi</option>
+                            <option value="Acara Sekolah">Acara Sekolah</option>
+                            <option value="Acara Keluarga">Acara Keluarga</option>
+                          </select>
+                        ) : (
+                          <input 
+                            type="text" 
+                            placeholder={record.status === 'Sakit' ? 'Ket sakit (cth: Demam, UKS)...' : 'Catatan / keterangan...'} 
+                            value={record.note || ''} 
+                            onChange={(e) => handleSaveAttendance(student.id, record.status, e.target.value)} 
+                            disabled={isAttendanceReadOnly} 
+                            className="w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500/70" 
+                          />
+                        )}
                       </td>
                     </tr>
                   );

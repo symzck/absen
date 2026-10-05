@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Calendar, Clock, UserCheck, Edit3, Trash2, CheckCircle2, 
   AlertCircle, ChevronRight, Save, X, RotateCcw, Send, Shield, Sparkles, Filter,
-  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play, Plus
+  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play, Plus, FileText
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 import { calculateSessionCountdown, sortSessionsByClosest } from './OfficerSubmissionGuide';
@@ -81,9 +81,12 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Available sessions: show all sessions for both Admin and Petugas for complete visibility
-  // Sort all sessions by closest date/time first (today / closest upcoming session #1)
-  const availableSessions = sortSessionsByClosest(sessions);
+  // Available sessions:
+  // Admin: melihat semua sesi untuk pengelolaan & arsip
+  // Selain Admin (Petugas/Member): HANYA ditunjukkan ketika Hari H (session.date === todayStr)
+  const availableSessions = sortSessionsByClosest(
+    isAdmin ? sessions : sessions.filter(s => s.date === todayStr)
+  );
 
   // Filter sessions based on tab & query
   const filteredSessions = availableSessions.filter(s => {
@@ -476,7 +479,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                   <th className="py-3 px-4">Nama Pemain</th>
                   <th className="py-3 px-4">Section / Kelas</th>
                   <th className="py-3 px-4 text-center">Status Kehadiran</th>
-                  <th className="py-3 px-4">Catatan Halangan</th>
+                  <th className="py-3 px-4 hidden sm:table-cell">Catatan Halangan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
@@ -488,13 +491,103 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
                   return (
                     <tr key={student.id} className="hover:bg-slate-800/30">
-                      <td className="py-2.5 px-4 font-bold text-white">
-                        {student.name}
+                      <td className="py-2.5 px-4 font-bold text-white align-top sm:align-middle">
+                        <div>{student.name}</div>
+                        {/* Input Keterangan Khusus Mobile */}
+                        <div className="sm:hidden mt-2 pt-1.5 border-t border-slate-800/70 font-normal">
+                          {rec.status === 'Izin' ? (
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] font-bold text-blue-400 flex items-center justify-between">
+                                <span className="flex items-center gap-1">
+                                  <FileText size={11} /> Alasan Izin:
+                                </span>
+                                {rec.note && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleNoteChangeInEdit(student.id, '')}
+                                    className="text-[9px] text-slate-400 hover:text-rose-400"
+                                  >
+                                    Reset
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {['Pulang', 'Organisasi', 'Acara Sekolah', 'Acara Keluarga'].map(reason => {
+                                  const isSelected = rec.note === reason;
+                                  return (
+                                    <button
+                                      key={reason}
+                                      type="button"
+                                      onClick={() => handleNoteChangeInEdit(student.id, isSelected ? '' : reason)}
+                                      className={`text-[10px] py-1.5 px-2 rounded-lg font-bold border transition-all text-center ${
+                                        isSelected
+                                          ? 'bg-blue-600 border-blue-400 text-white shadow-sm ring-1 ring-blue-400'
+                                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-blue-500/50 hover:text-blue-300'
+                                      }`}
+                                    >
+                                      {reason}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 whitespace-nowrap">
+                                  <FileText size={11} className={rec.note ? "text-amber-400" : "text-slate-500"} />
+                                  <span>Ket:</span>
+                                </span>
+                                <div className="relative flex-1">
+                                  <input
+                                    type="text"
+                                    value={rec.note || ''}
+                                    onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                                    placeholder={
+                                      rec.status === 'Sakit'
+                                        ? 'Ket sakit (cth: Demam, UKS)...'
+                                        : 'Keterangan...'
+                                    }
+                                    className={`w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 border transition-all ${
+                                      rec.note 
+                                        ? 'border-amber-500/50 text-amber-200' 
+                                        : 'border-slate-800 text-slate-200 placeholder-slate-600 focus:border-amber-500/60'
+                                    } focus:outline-none focus:ring-1 focus:ring-amber-500/50 pr-6`}
+                                  />
+                                  {rec.note && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleNoteChangeInEdit(student.id, '')}
+                                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-400 p-0.5"
+                                      title="Hapus keterangan"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {rec.status === 'Sakit' && !rec.note && (
+                                <div className="flex flex-wrap gap-1 mt-1 pl-8">
+                                  {['Demam', 'UKS', 'Flu/Batuk', 'Cedera'].map(preset => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      onClick={() => handleNoteChangeInEdit(student.id, preset)}
+                                      className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-slate-800/90 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40"
+                                    >
+                                      +{preset}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="py-2.5 px-4 text-slate-300">
+                      <td className="py-2.5 px-4 text-slate-300 align-top sm:align-middle">
                         <span className="text-amber-400 font-semibold">{student.section}</span> · Kls {student.kelas} · Asr {student.asrama}
                       </td>
-                      <td className="py-2.5 px-4">
+                      <td className="py-2.5 px-4 align-top sm:align-middle">
                         <div className="flex items-center justify-center gap-1">
                           {[
                             { key: 'Hadir', bg: 'bg-emerald-600 text-white', label: 'H' },
@@ -530,14 +623,32 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                           </button>
                         </div>
                       </td>
-                      <td className="py-2.5 px-4">
-                        <input
-                          type="text"
-                          value={rec.note || ''}
-                          onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
-                          placeholder="Keterangan halangan..."
-                          className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                        />
+                      <td className="py-2.5 px-4 hidden sm:table-cell align-middle">
+                        {rec.status === 'Izin' ? (
+                          <select
+                            value={rec.note || ''}
+                            onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                            className={`w-full text-xs px-2.5 py-1.5 rounded-xl border font-semibold cursor-pointer transition-all ${
+                              rec.note 
+                                ? 'bg-blue-950/50 border-blue-600 text-blue-200' 
+                                : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+                            }`}
+                          >
+                            <option value="">-- Pilih Alasan Izin --</option>
+                            <option value="Pulang">Pulang</option>
+                            <option value="Organisasi">Organisasi</option>
+                            <option value="Acara Sekolah">Acara Sekolah</option>
+                            <option value="Acara Keluarga">Acara Keluarga</option>
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={rec.note || ''}
+                            onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                            placeholder={rec.status === 'Sakit' ? 'Ket sakit (cth: Demam, UKS)...' : 'Keterangan halangan...'}
+                            className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          />
+                        )}
                       </td>
                     </tr>
                   );
@@ -557,7 +668,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
               {isAdmin 
                 ? 'Gunakan tombol "Semua" atau jadwalkan sesi baru melalui tombol di atas.'
-                : 'Belum ada sesi latihan aktif yang dijadwalkan oleh Administrator.'}
+                : 'Hari ini tidak ada sesi latihan marching band. Sesi untuk petugas hanya ditampilkan ketika Hari H pelaksanaan.'}
             </p>
           </div>
         ) : (

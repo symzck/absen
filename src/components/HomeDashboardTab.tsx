@@ -71,8 +71,11 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
   });
 
   // Scheduled practice sessions list:
-  // Sort by closest date/time first (today/closest upcoming session #1)
-  const scheduledSessions = sortSessionsByClosest(attendances);
+  // Admin: melihat semua sesi (lampau, hari ini, mendatang) untuk kebutuhan kelola jadwal
+  // Selain Admin (Petugas/Member): HANYA ditunjukkan ketika Hari H pelaksanaan (session.date === todayStr)
+  const scheduledSessions = sortSessionsByClosest(
+    isAdmin ? attendances : attendances.filter(a => a.date === todayStr)
+  );
   const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
 
   // Current session calculations
@@ -253,20 +256,24 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
       </div>
 
       {/* 3. JADWAL & SESI LATIHAN KORPS (DIATUR ADMIN) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-amber-900/40 text-amber-300 border border-amber-700/40 text-[11px] font-semibold mb-1">
-              <Calendar size={12} className="text-amber-400" /> Sesi Latihan Resmi (Diatur Admin)
+              <Calendar size={12} className="text-amber-400 shrink-0" /> Sesi Latihan Resmi {isAdmin ? '(Diatur Admin)' : '(Hari H)'}
             </div>
-            <h2 className="text-lg font-black text-white tracking-tight">Jadwal & Agenda Latihan Korps</h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Latihan tidak dilaksanakan setiap hari. Admin mengatur tanggal & waktu sesi latihan resmi.
+            <h2 className="text-base sm:text-lg font-black text-white tracking-tight break-words">
+              {isAdmin ? 'Jadwal & Agenda Latihan Korps' : 'Sesi Latihan Hari Ini'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5 break-words">
+              {isAdmin 
+                ? 'Latihan tidak dilaksanakan setiap hari. Admin mengatur tanggal & waktu sesi latihan resmi.'
+                : 'Sesi latihan untuk petugas dan anggota hanya ditampilkan ketika Hari H pelaksanaan.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {onOpenScheduleModal && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {isAdmin && onOpenScheduleModal && (
               <button
                 type="button"
                 onClick={() => onOpenScheduleModal()}
@@ -281,16 +288,20 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
               onClick={() => onNavigateTab('sessions')}
               className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
             >
-              <span>Semua Sesi ({scheduledSessions.length})</span>
+              <span>{isAdmin ? `Semua Sesi (${scheduledSessions.length})` : `Sesi Hari H (${scheduledSessions.length})`}</span>
               <ChevronRight size={14} />
             </button>
           </div>
         </div>
 
         {scheduledSessions.length === 0 ? (
-          <div className="p-8 text-center bg-slate-950 rounded-2xl border border-slate-800 text-slate-400 text-xs space-y-3">
+          <div className="p-6 sm:p-8 text-center bg-slate-950 rounded-2xl border border-slate-800 text-slate-400 text-xs space-y-3">
             <Calendar size={28} className="mx-auto text-slate-600" />
-            <p className="font-semibold text-slate-300">Belum ada sesi latihan yang dijadwalkan oleh Admin.</p>
+            <p className="font-semibold text-slate-300 max-w-md mx-auto">
+              {isAdmin 
+                ? 'Belum ada sesi latihan yang dijadwalkan oleh Admin.' 
+                : 'Hari ini tidak ada sesi latihan marching band. Sesi hanya ditampilkan ketika Hari H pelaksanaan.'}
+            </p>
             {isAdmin && onOpenScheduleModal && (
               <button
                 type="button"
@@ -315,7 +326,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
               return (
                 <div
                   key={session.id || session.date}
-                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-md ${
+                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-3 shadow-md min-w-0 ${
                     isClosed
                       ? 'bg-slate-950/80 border-slate-800 opacity-80'
                       : isExpired
@@ -327,16 +338,16 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       : 'bg-slate-950 border-slate-800 hover:border-purple-600/50'
                   }`}
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                  <div className="space-y-2 min-w-0">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-purple-900/40 text-purple-300 border-purple-700/50 flex items-center gap-1">
-                          <Calendar size={11} /> {session.date} {isToday ? '(Hari Ini)' : ''}
+                          <Calendar size={11} className="shrink-0" /> {session.date} {isToday ? '(Hari Ini)' : ''}
                         </span>
 
                         {session.sessionType === 'sunnah' || session.sessionName?.toLowerCase().includes('sunnah') ? (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1 shadow-sm">
-                            <Sparkles size={10} className="text-amber-400" /> Sunnah (+Bonus)
+                            <Sparkles size={10} className="text-amber-400 shrink-0" /> Sunnah (+Bonus)
                           </span>
                         ) : (
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
@@ -347,19 +358,19 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
 
                       {isClosed ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
-                          <Lock size={10} className="text-amber-400" /> Selesai / Ditutup
+                          <Lock size={10} className="text-amber-400 shrink-0" /> Selesai / Ditutup
                         </span>
                       ) : isUpcoming ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-                          <Timer size={10} /> {countdown.formatted}
+                          <Timer size={10} className="shrink-0" /> {countdown.formatted}
                         </span>
                       ) : isExpired ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
-                          <Clock size={10} /> Expired
+                          <Clock size={10} className="shrink-0" /> Expired
                         </span>
                       ) : isSubmitted ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
-                          <CheckCircle2 size={10} /> Ter-submit
+                          <CheckCircle2 size={10} className="shrink-0" /> Ter-submit
                         </span>
                       ) : (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
@@ -368,7 +379,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       )}
                     </div>
 
-                    <h3 className="font-bold text-sm text-white line-clamp-1">
+                    <h3 className="font-bold text-sm text-white break-words">
                       {session.sessionName || 'Latihan Rutin'}
                     </h3>
 
@@ -376,38 +387,38 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       {session.scheduledTime && (
                         <div className="flex items-center gap-1.5">
                           <Clock size={12} className="text-purple-400 shrink-0" />
-                          <span>{session.scheduledTime}</span>
+                          <span className="break-words">{session.scheduledTime}</span>
                         </div>
                       )}
                       {session.location && (
                         <div className="flex items-center gap-1.5">
                           <MapPin size={12} className="text-amber-400 shrink-0" />
-                          <span className="truncate">{session.location}</span>
+                          <span className="break-words">{session.location}</span>
                         </div>
                       )}
                       {session.targetSection && session.targetSection !== 'All' && (
-                        <div className="text-[11px] text-purple-300 font-medium">
+                        <div className="text-[11px] text-purple-300 font-medium break-words">
                           Unit: Section {session.targetSection}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
                     <button
                       type="button"
                       onClick={() => handleSelectSessionDate(session.date)}
-                      className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
                     >
                       <span>{isClosed ? 'Lihat Presensi' : isUpcoming && !isAdmin ? '⏳ Buka Sesi (Countdown)' : 'Presensi Sesi Ini'}</span>
-                      <ArrowRight size={13} />
+                      <ArrowRight size={13} className="shrink-0" />
                     </button>
 
                     {isAdmin && onOpenScheduleModal && (
                       <button
                         type="button"
                         onClick={() => onOpenScheduleModal(session)}
-                        className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                        className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0"
                         title="Edit jadwal sesi ini"
                       >
                         <Edit3 size={13} />
@@ -422,16 +433,16 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
       </div>
 
       {/* 3.5 ARAHAN & PANDUAN KERJA PRESENSI SESI LATIHAN */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-600/40 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+      <div className="bg-gradient-to-r from-slate-900 via-indigo-950/60 to-slate-900 border border-indigo-600/40 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 text-[11px] font-bold mb-1">
-              <Sparkles size={12} className="text-amber-400" /> Panduan & Alur Kerja Latihan
+              <Sparkles size={12} className="text-amber-400 shrink-0" /> Panduan & Alur Kerja Latihan
             </div>
-            <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+            <h2 className="text-base sm:text-lg font-black text-white tracking-tight break-words">
               Alur Kerja Presensi Sesi Latihan Marching Band
             </h2>
-            <p className="text-xs text-slate-300 mt-0.5">
+            <p className="text-xs text-slate-300 mt-0.5 break-words">
               {scheduledSessions.length > 0
                 ? `Tersedia ${scheduledSessions.length} sesi latihan korps. Ikuti alur pelaksanaan presensi berikut:`
                 : 'Ikuti tahapan berikut setiap kali ada sesi latihan korps yang dijadwalkan:'}
@@ -445,10 +456,10 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 const targetDate = scheduledSessions[0]?.date || todayStr;
                 handleSelectSessionDate(targetDate);
               }}
-              className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
+              className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
             >
               <span>Buka Sesi Terdekat ({scheduledSessions[0]?.date})</span>
-              <ArrowRight size={14} />
+              <ArrowRight size={14} className="shrink-0" />
             </button>
           )}
         </div>
@@ -543,7 +554,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 Jadwal & Sesi Latihan
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5">
-                {attendances.length} sesi terdaftar
+                {isAdmin ? `${attendances.length} sesi terdaftar` : `${attendances.filter(a => a.date === todayStr).length} sesi hari ini`}
               </div>
             </div>
           </button>
