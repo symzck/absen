@@ -3548,7 +3548,7 @@ export default function App() {
                     }} 
                     className="px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
                   >
-                    <UserPlus size={14} /> <span>+ Tambah Akun Petugas</span>
+                    <UserPlus size={14} /> <span>Tambah Akun Petugas</span>
                   </button>
                 ) : (
                   <button

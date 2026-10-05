@@ -265,37 +265,21 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
             {onOpenScheduleModal && (
               <button
                 type="button"
                 onClick={() => onOpenScheduleModal()}
-                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 border border-amber-300/60 active:scale-95 transition-all cursor-pointer ring-2 ring-amber-400/20"
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
               >
-                <Plus size={15} />
-                <span>+ Jadwalkan Sesi Latihan</span>
-              </button>
-            )}
-            {onOpenScheduleModal && (
-              <button
-                type="button"
-                onClick={() => onOpenScheduleModal({
-                  date: todayStr,
-                  sessionName: 'Latihan Sunnah & Pengayaan Mandiri',
-                  sessionType: 'sunnah',
-                  records: []
-                })}
-                className="px-3.5 py-2.5 bg-gradient-to-r from-purple-900/90 to-indigo-900/90 hover:from-purple-800 hover:to-indigo-800 text-amber-300 hover:text-white font-bold rounded-2xl text-xs flex items-center gap-1.5 border border-purple-500/50 shadow-md shadow-purple-950/40 active:scale-95 transition-all cursor-pointer"
-                title="Jadwalkan Sesi Latihan Sunnah Berpoin Bonus"
-              >
-                <Sparkles size={14} className="text-amber-400" />
-                <span>+ Latihan Sunnah ⭐</span>
+                <Plus size={14} />
+                <span>Jadwal Baru</span>
               </button>
             )}
             <button
               type="button"
               onClick={() => onNavigateTab('sessions')}
-              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-2xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
             >
               <span>Semua Sesi ({scheduledSessions.length})</span>
               <ChevronRight size={14} />
@@ -705,7 +689,8 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 onClick={onOpenAddAnnouncement}
                 className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-purple-950 transition-all cursor-pointer"
               >
-                <span>+ Buat Pengumuman</span>
+                <Plus size={14} />
+                <span>Buat Pengumuman</span>
               </button>
             )}
             <button

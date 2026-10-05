@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Calendar, Clock, UserCheck, Edit3, Trash2, CheckCircle2, 
   AlertCircle, ChevronRight, Save, X, RotateCcw, Send, Shield, Sparkles, Filter,
-  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play
+  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play, Plus
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 import { calculateSessionCountdown, sortSessionsByClosest } from './OfficerSubmissionGuide';
@@ -315,7 +315,8 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                 onClick={onOpenScheduleModal}
                 className="px-3.5 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5"
               >
-                <span>+ Jadwalkan Sesi Baru</span>
+                <Plus size={14} />
+                <span>Jadwalkan Sesi Baru</span>
               </button>
             )}
           </div>
