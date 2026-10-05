@@ -3163,7 +3163,8 @@ export default function App() {
             return (
               student.name.toLowerCase().includes(q) ||
               (student.kelas || '').toLowerCase().includes(q) ||
-              (student.asrama || '').toLowerCase().includes(q)
+              (student.asrama || '').toLowerCase().includes(q) ||
+              (student.notes || '').toLowerCase().includes(q)
             );
           }
           return true;
@@ -3557,12 +3558,13 @@ export default function App() {
                       <th className="py-3.5 px-2 text-center text-rose-400">A</th>
                       <th className="py-3.5 px-4 text-center font-black text-amber-300">Skor Prestasi</th>
                       <th className="py-3.5 px-3 text-center">Status</th>
+                      <th className="py-3.5 px-4 text-left min-w-[220px]">Catatan / Keterangan</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 text-xs">
                     {filteredRecap.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="py-8 text-center text-slate-500 text-xs">
+                        <td colSpan={12} className="py-8 text-center text-slate-500 text-xs">
                           Tidak ada data anggota yang cocok dengan filter yang dipilih.
                         </td>
                       </tr>
@@ -3599,6 +3601,11 @@ export default function App() {
                               <div className="text-[11px] text-slate-400">
                                 Kls {student.kelas || '-'} · Asrama {student.asrama || '-'}
                               </div>
+                              {student.notes && student.notes !== 'Tidak ada catatan' && (
+                                <div className="text-[10px] text-amber-300/80 mt-1 line-clamp-2 md:hidden" title={student.notes}>
+                                  📝 {student.notes}
+                                </div>
+                              )}
                             </td>
 
                             <td className="py-3 px-3 text-center">
@@ -3648,6 +3655,16 @@ export default function App() {
                                 <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 text-[10px] font-semibold border border-rose-800">
                                   Perlu Binaan
                                 </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 min-w-[220px] max-w-sm">
+                              {student.notes && student.notes !== 'Tidak ada catatan' ? (
+                                <div className="text-[11px] text-amber-200/90 font-medium break-words leading-relaxed bg-slate-950/70 p-2 rounded-xl border border-slate-800/80">
+                                  {student.notes}
+                                </div>
+                              ) : (
+                                <span className="text-slate-600 text-xs italic">Tidak ada catatan</span>
                               )}
                             </td>
                           </tr>
