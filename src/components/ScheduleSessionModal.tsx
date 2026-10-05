@@ -21,6 +21,7 @@ export interface BatchScheduleData {
   sessions: Array<{
     date: string;
     sessionName: string;
+    sessionType?: 'wajib' | 'sunnah';
     scheduledTime: string;
     location: string;
     targetSection: string;
@@ -37,6 +38,7 @@ interface ScheduleSessionModalProps {
   onSaveSchedule: (sessionData: {
     date: string;
     sessionName: string;
+    sessionType?: 'wajib' | 'sunnah';
     scheduledTime: string;
     location: string;
     targetSection: string;
@@ -73,6 +75,7 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
   // Single mode state
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [sessionName, setSessionName] = useState('');
+  const [sessionType, setSessionType] = useState<'wajib' | 'sunnah'>('wajib');
   const [scheduledTime, setScheduledTime] = useState('15:30 - 17:30 WIB');
   const [location, setLocation] = useState('Lapangan Utama PGT');
   const [targetSection, setTargetSection] = useState('All');
@@ -91,6 +94,7 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
         setScheduleMode('single');
         setDate(editingSession.date);
         setSessionName(editingSession.sessionName || '');
+        setSessionType(editingSession.sessionType || (editingSession.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'));
         setScheduledTime(editingSession.scheduledTime || '15:30 - 17:30 WIB');
         setLocation(editingSession.location || 'Lapangan Utama PGT');
         setTargetSection(editingSession.targetSection || 'All');
@@ -100,6 +104,7 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
         const todayStr = new Date().toISOString().split('T')[0];
         setDate(todayStr);
         setSessionName('Latihan Rutin Marching Band');
+        setSessionType('wajib');
         setScheduledTime('15:30 - 17:30 WIB');
         setLocation('Lapangan Utama PGT');
         setTargetSection('All');
@@ -152,6 +157,7 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
     await onSaveSchedule({
       date,
       sessionName: sessionName.trim(),
+      sessionType,
       scheduledTime: scheduledTime.trim() || '15:30 - 17:30 WIB',
       location: location.trim() || 'Lapangan Utama PGT',
       targetSection: targetSection || 'All',
@@ -178,6 +184,7 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
       return {
         date: d,
         sessionName: `${autoSessionBaseName.trim()} (${dayName})`,
+        sessionType,
         scheduledTime: scheduledTime.trim() || '15:30 - 17:30 WIB',
         location: location.trim() || 'Lapangan Utama PGT',
         targetSection: targetSection || 'All',
@@ -441,6 +448,73 @@ export const ScheduleSessionModal: React.FC<ScheduleSessionModalProps> = ({
           /* SINGLE SESSION FORM */
           <form onSubmit={handleSubmitSingle} className="space-y-4">
             
+            {/* Session Type: Latihan Wajib vs Latihan Sunnah */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
+                Jenis Agenda Latihan
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSessionType('wajib');
+                    if (sessionName.toLowerCase().includes('sunnah')) {
+                      setSessionName('Latihan Rutin Marching Band');
+                    }
+                  }}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    sessionType === 'wajib'
+                      ? 'bg-purple-950/90 border-purple-500 text-white shadow-lg ring-2 ring-purple-500/20'
+                      : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-extrabold text-xs text-white flex items-center gap-1.5">
+                      🏛️ Latihan Wajib
+                    </span>
+                    {sessionType === 'wajib' && <Check size={14} className="text-purple-400" />}
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    Sesi resmi reguler korps seluruh pemain
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSessionType('sunnah');
+                    if (!sessionName || sessionName === 'Latihan Rutin Marching Band') {
+                      setSessionName('Latihan Sunnah & Pengayaan Mandiri');
+                    }
+                  }}
+                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                    sessionType === 'sunnah'
+                      ? 'bg-amber-950/90 border-amber-500 text-white shadow-lg ring-2 ring-amber-500/30'
+                      : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-extrabold text-xs text-amber-300 flex items-center gap-1.5">
+                      ⭐ Latihan Sunnah
+                    </span>
+                    {sessionType === 'sunnah' && <Check size={14} className="text-amber-400" />}
+                  </div>
+                  <span className="text-[10px] text-amber-200/80">
+                    Poin bonus untuk Leaderboard Anggota Terbaik!
+                  </span>
+                </button>
+              </div>
+
+              {sessionType === 'sunnah' && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-[11px] flex items-center gap-2 animate-in fade-in">
+                  <Sparkles size={14} className="text-amber-400 shrink-0" />
+                  <span>
+                    <strong>Poin Bonus Leaderboard:</strong> Kehadiran pemain pada sesi Sunnah ini tercatat khusus dengan bintang ⭐ dan menambah skor prestasi pada peringkat anggota terbaik!
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Date Field */}
               <div>

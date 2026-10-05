@@ -6,7 +6,8 @@ import {
   Check, Clock, UserCheck, Lock, Eye, EyeOff, Edit2, Settings, Key,
   FileSpreadsheet, History, Send, Edit3, RotateCcw, HelpCircle,
   Globe, ExternalLink, Cloud, Database, UploadCloud, RefreshCw,
-  Home, Megaphone, Plus, Pin, Calendar, Timer, ArrowLeft, ArrowRight, Undo2
+  Home, Megaphone, Plus, Pin, Calendar, Timer, ArrowLeft, ArrowRight, Undo2,
+  Star, Award, Flame, Crown, Music
 } from 'lucide-react';
 import officialLogo from './assets/logo.png';
 import { EditMemberModal } from './components/EditMemberModal';
@@ -79,6 +80,7 @@ export interface DailyAttendance {
   id?: string;
   date: string;
   sessionName?: string;
+  sessionType?: 'wajib' | 'sunnah';
   scheduledTime?: string;
   location?: string;
   targetSection?: string;
@@ -404,6 +406,8 @@ export default function App() {
   const [selectedSection, setSelectedSection] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [recapFilter, setRecapFilter] = useState<'all' | 'warning' | 'safe'>('all');
+  const [recapSunnahFilter, setRecapSunnahFilter] = useState<'all' | 'sunnah_only' | 'perfect_only'>('all');
+  const [recapSearchQuery, setRecapSearchQuery] = useState('');
   const [currentSessionName, setCurrentSessionName] = useState('Latihan Rutin');
 
   // Modal: Submit Confirmation
@@ -1356,6 +1360,7 @@ export default function App() {
   const handleSaveSchedule = async (scheduleData: {
     date: string;
     sessionName: string;
+    sessionType?: 'wajib' | 'sunnah';
     scheduledTime: string;
     location: string;
     targetSection: string;
@@ -1363,6 +1368,7 @@ export default function App() {
     autoPublishAnnouncement: boolean;
   }) => {
     let savedSession: DailyAttendance | null = null;
+    const sessionType = scheduleData.sessionType || (scheduleData.sessionName.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib');
     setAttendances(prev => {
       const existingIndex = prev.findIndex(a => a.date === scheduleData.date);
       let updated: DailyAttendance[];
@@ -1371,6 +1377,7 @@ export default function App() {
         savedSession = {
           ...updated[existingIndex],
           sessionName: scheduleData.sessionName,
+          sessionType,
           scheduledTime: scheduleData.scheduledTime,
           location: scheduleData.location,
           targetSection: scheduleData.targetSection,
@@ -1383,6 +1390,7 @@ export default function App() {
           id: `sesi-${scheduleData.date}`,
           date: scheduleData.date,
           sessionName: scheduleData.sessionName,
+          sessionType,
           scheduledTime: scheduleData.scheduledTime,
           location: scheduleData.location,
           targetSection: scheduleData.targetSection,
@@ -1439,6 +1447,7 @@ export default function App() {
           sessionObj = {
             ...copy[existingIdx],
             sessionName: item.sessionName,
+            sessionType: item.sessionType || (item.sessionName.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
             scheduledTime: item.scheduledTime,
             location: item.location,
             targetSection: item.targetSection,
@@ -1451,6 +1460,7 @@ export default function App() {
             id: `sesi-${item.date}`,
             date: item.date,
             sessionName: item.sessionName,
+            sessionType: item.sessionType || (item.sessionName.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
             scheduledTime: item.scheduledTime,
             location: item.location,
             targetSection: item.targetSection,
@@ -1658,17 +1668,34 @@ export default function App() {
   const recapData = useMemo(() => {
     const totalDays = submittedSessions.length || 0;
     
+    // Separate Wajib vs Sunnah submitted sessions
+    const wajibSessions = submittedSessions.filter(s => (s.sessionType || 'wajib') !== 'sunnah' && !s.sessionName?.toLowerCase().includes('sunnah'));
+    const sunnahSessions = submittedSessions.filter(s => s.sessionType === 'sunnah' || s.sessionName?.toLowerCase().includes('sunnah'));
+
+    const totalWajibDays = wajibSessions.length;
+    const totalSunnahDays = sunnahSessions.length;
+
     return activeStudents.map(student => {
       let presentCount = 0;
+      let wajibPresentCount = 0;
+      let sunnahPresentCount = 0;
       let izinCount = 0;
       let sakitCount = 0;
       let alfaCount = 0;
       let notes: string[] = [];
 
       submittedSessions.forEach(day => {
+        const isSunnah = day.sessionType === 'sunnah' || day.sessionName?.toLowerCase().includes('sunnah');
         const record = day.records.find(r => r.studentId === student.id);
         if (record) {
-          if (record.status === 'Hadir') presentCount++;
+          if (record.status === 'Hadir') {
+            presentCount++;
+            if (isSunnah) {
+              sunnahPresentCount++;
+            } else {
+              wajibPresentCount++;
+            }
+          }
           else if (record.status === 'Izin') izinCount++;
           else if (record.status === 'Sakit') sakitCount++;
           else if (record.status === 'Alfa') alfaCount++;
@@ -1680,11 +1707,25 @@ export default function App() {
       });
 
       const percentage = totalDays > 0 ? Math.round((presentCount / totalDays) * 100) : 100;
+      const wajibPercentage = totalWajibDays > 0 ? Math.round((wajibPresentCount / totalWajibDays) * 100) : percentage;
+      
+      // Bonus: 10 points per attended Sunnah practice session
+      const sunnahBonusPoints = sunnahPresentCount * 10;
+      // Leaderboard Score: wajib percentage + sunnah bonus points
+      const totalScore = wajibPercentage + sunnahBonusPoints;
+
       return {
         ...student,
         studentId: student.id,
         presentCount,
         hadirCount: presentCount,
+        wajibPresentCount,
+        sunnahPresentCount,
+        sunnahBonusPoints,
+        totalScore,
+        wajibPercentage,
+        totalWajibDays,
+        totalSunnahDays,
         izinCount,
         sakitCount,
         alfaCount,
@@ -1692,7 +1733,21 @@ export default function App() {
         notes: notes.join(', ') || 'Tidak ada catatan'
       };
     });
-  }, [students, submittedSessions]);
+  }, [activeStudents, submittedSessions]);
+
+  // Leaderboard Anggota Terbaik (Pemain Teladan Korps)
+  const bestMembersLeaderboard = useMemo(() => {
+    return [...recapData].sort((a, b) => {
+      // 1. Highest totalScore (Wajib rate + Sunnah bonus)
+      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+      // 2. Highest sunnah attendance
+      if (b.sunnahPresentCount !== a.sunnahPresentCount) return b.sunnahPresentCount - a.sunnahPresentCount;
+      // 3. Lowest alfa
+      if (a.alfaCount !== b.alfaCount) return a.alfaCount - b.alfaCount;
+      // 4. Alphabetical
+      return a.name.localeCompare(b.name);
+    });
+  }, [recapData]);
 
   const sectionLeaderboard = useMemo(() => {
     const stats: Record<string, { totalPercentage: number; count: number; presentTotal: number }> = {
@@ -1721,12 +1776,12 @@ export default function App() {
 
   const exportToExcel = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "No,Nama,Kelas,Asrama,Section,Persentase Kehadiran,Status,Catatan Halangan\n";
+    csvContent += "No,Nama,Kelas,Asrama,Section,Kehadiran Wajib,Persentase Wajib,Kehadiran Sunnah (Bonus),Total Skor Prestasi,Status Keaktifan,Catatan Halangan\n";
     
-    recapData.forEach((row, index) => {
-      const isWarning = row.percentage < 80 ? "Di Bawah 80%" : "Aman";
+    bestMembersLeaderboard.forEach((row, index) => {
+      const isWarning = row.wajibPercentage < 80 ? "Perlu Pembinaan (<80%)" : "Disiplin Baik (>=80%)";
       const cleanNote = row.notes.replace(/,/g, ';'); 
-      const rowData = `${index + 1},${row.name},${row.kelas},${row.asrama},${row.section},${row.percentage}%,${isWarning},${cleanNote}`;
+      const rowData = `${index + 1},${row.name},${row.kelas},${row.asrama},${row.section},${row.wajibPresentCount}/${row.totalWajibDays},${row.wajibPercentage}%,${row.sunnahPresentCount} Sesi (+${row.sunnahBonusPoints} Poin),${row.totalScore} Poin,${isWarning},${cleanNote}`;
       csvContent += rowData + "\n";
     });
 
@@ -1737,7 +1792,7 @@ export default function App() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    triggerToast('Laporan absensi resmi berhasil diunduh (CSV/Excel)!');
+    triggerToast('Laporan absensi resmi dan Leaderboard berhasil diunduh (CSV/Excel)!');
   };
 
   // Member & Student Management Handlers
@@ -2915,70 +2970,517 @@ export default function App() {
           />
         );
 
-      case 'recap':
+      case 'recap': {
+        const wajibSessionsCount = submittedSessions.filter(s => (s.sessionType || 'wajib') !== 'sunnah' && !s.sessionName?.toLowerCase().includes('sunnah')).length;
+        const sunnahSessionsCount = submittedSessions.filter(s => s.sessionType === 'sunnah' || s.sessionName?.toLowerCase().includes('sunnah')).length;
+
+        const filteredRecap = bestMembersLeaderboard.filter(student => {
+          if (selectedSection !== 'All' && student.section !== selectedSection) return false;
+          if (recapSunnahFilter === 'sunnah_only' && student.sunnahPresentCount === 0) return false;
+          if (recapSunnahFilter === 'perfect_only' && student.wajibPercentage < 100) return false;
+          if (recapSearchQuery.trim()) {
+            const q = recapSearchQuery.toLowerCase();
+            return (
+              student.name.toLowerCase().includes(q) ||
+              (student.kelas || '').toLowerCase().includes(q) ||
+              (student.asrama || '').toLowerCase().includes(q)
+            );
+          }
+          return true;
+        });
+
+        const top1 = bestMembersLeaderboard[0];
+        const top2 = bestMembersLeaderboard[1];
+        const top3 = bestMembersLeaderboard[2];
+        const topRest = bestMembersLeaderboard.slice(3, 10);
+
         return (
-          <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+          <div className="space-y-6 text-left">
+            {/* 1. HEADER & OVERVIEW BANNER */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-bold mb-2">
-                    <Trophy size={14} className="text-amber-400" /> Leaderboard Section
+                    <Trophy size={14} className="text-amber-400" /> Leaderboard & Rekapitulasi Presensi
                   </div>
-                  <h2 className="text-xl font-extrabold text-white">Peringkat & Rekapitulasi</h2>
-                  <p className="text-xs text-slate-400 mt-1">Dihitung dari {submittedSessions.length} sesi resmi.</p>
+                  <h2 className="text-2xl font-black text-white tracking-tight">Peringkat & Rekapitulasi Terpadu</h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Dihitung dari <strong>{submittedSessions.length} sesi terfinalisasi</strong> ({wajibSessionsCount} Sesi Wajib · {sunnahSessionsCount} Sesi Sunnah Berpoin Bonus).
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
-                   <button onClick={exportToExcel} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg cursor-pointer"><Download size={15} /> <span>Export CSV</span></button>
+                  <button 
+                    onClick={exportToExcel} 
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <Download size={15} /> 
+                    <span>Export Rekap CSV / Excel</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Session Types Overview Badges */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-slate-400 font-semibold uppercase">Total Sesi Resmi</div>
+                    <div className="text-xl font-black text-white">{submittedSessions.length} Sesi</div>
+                  </div>
+                  <Calendar size={22} className="text-purple-400" />
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-purple-800/40 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-purple-300 font-semibold uppercase">Sesi Latihan Wajib</div>
+                    <div className="text-xl font-black text-purple-200">{wajibSessionsCount} Sesi</div>
+                  </div>
+                  <Shield size={22} className="text-purple-400" />
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/40 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-amber-300 font-semibold uppercase flex items-center gap-1">
+                      <Sparkles size={11} className="text-amber-400" /> Sesi Latihan Sunnah
+                    </div>
+                    <div className="text-xl font-black text-amber-300">{sunnahSessionsCount} Sesi (+10 Pts)</div>
+                  </div>
+                  <Star size={22} className="text-amber-400 fill-amber-400/20" />
+                </div>
+              </div>
+            </div>
+
+            {/* 2. LEADERBOARD ANGGOTA TERBAIK (PEMAIN TELADAN KORPS) */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950/40 border border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 relative z-10">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-300 text-xs font-black mb-1">
+                    <Trophy size={13} className="text-amber-400" />
+                    <span>PRESTASI KORPS PGT</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                    🏆 Leaderboard Anggota Terbaik (Pemain Teladan)
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                    Peringkat dihitung dari <strong>Kehadiran Latihan Wajib</strong> ditambah <strong>Poin Bonus Kehadiran Latihan Sunnah (+10 poin per sesi sunnah)</strong>.
+                  </p>
+                </div>
+
+                <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold shrink-0">
+                  <Sparkles size={14} className="text-amber-400" />
+                  <span>Bonus Sunnah: +10 Poin / Sesi</span>
+                </div>
+              </div>
+
+              {/* PODIUM TOP 3 PLAYERS */}
+              {bestMembersLeaderboard.length >= 3 ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10 pt-2">
+                  {/* JUARA 2 (PERAK) */}
+                  {top2 && (
+                    <div className="order-2 md:order-1 p-5 rounded-3xl bg-slate-950/90 border border-slate-600/60 shadow-xl flex flex-col justify-between space-y-4 hover:border-slate-400 transition-all">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="w-9 h-9 rounded-2xl bg-slate-800 border border-slate-600 text-slate-200 font-black text-sm flex items-center justify-center shadow">
+                            🥈 #2
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            Peringkat 2
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-black text-lg text-white line-clamp-1">{top2.name}</div>
+                          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 font-bold border border-purple-800/60 text-[10px]">
+                              {top2.section}
+                            </span>
+                            <span>Kls {top2.kelas} · Asr {top2.asrama}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-xs text-slate-400">Skor Prestasi:</span>
+                          <span className="text-xl font-black text-slate-200">{top2.totalScore} Pts</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>Wajib: {top2.wajibPercentage}% ({top2.wajibPresentCount}/{top2.totalWajibDays})</span>
+                          {top2.sunnahPresentCount > 0 ? (
+                            <span className="font-bold text-amber-300 flex items-center gap-1">
+                              <Star size={11} className="fill-amber-400 text-amber-400" />
+                              {top2.sunnahPresentCount} Sunnah (+{top2.sunnahBonusPoints})
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">0 Sunnah</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* JUARA 1 (EMAS - HIGHLIGHTED) */}
+                  {top1 && (
+                    <div className="order-1 md:order-2 p-6 rounded-3xl bg-gradient-to-b from-amber-950/60 via-slate-950 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/20 flex flex-col justify-between space-y-4 ring-4 ring-amber-400/10 md:-mt-2">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black text-lg flex items-center justify-center shadow-lg shadow-amber-500/30">
+                            🥇 #1
+                          </span>
+                          <span className="text-xs font-black px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 flex items-center gap-1 shadow-md">
+                            <Crown size={14} className="text-slate-950 fill-slate-950" /> Bintang Utama
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-black text-xl text-white line-clamp-1">{top1.name}</div>
+                          <div className="text-xs text-slate-300 mt-1 flex items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold border border-amber-400/50 text-[11px]">
+                              {top1.section}
+                            </span>
+                            <span>Kls {top1.kelas} · Asrama {top1.asrama}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-amber-500/30 space-y-2">
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-xs text-amber-200/80 font-bold">Total Skor Teladan:</span>
+                          <span className="text-2xl font-black text-amber-300">{top1.totalScore} Pts</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between text-amber-200">
+                          <span>Wajib: <strong>{top1.wajibPercentage}%</strong> ({top1.wajibPresentCount}/{top1.totalWajibDays})</span>
+                          <span className="font-black text-amber-300 flex items-center gap-1">
+                            <Sparkles size={12} className="text-amber-400" />
+                            {top1.sunnahPresentCount} Sesi Sunnah (+{top1.sunnahBonusPoints} Pts)
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* JUARA 3 (PERUNGGU) */}
+                  {top3 && (
+                    <div className="order-3 p-5 rounded-3xl bg-slate-950/90 border border-amber-700/60 shadow-xl flex flex-col justify-between space-y-4 hover:border-amber-600 transition-all">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="w-9 h-9 rounded-2xl bg-amber-950/80 border border-amber-700 text-amber-300 font-black text-sm flex items-center justify-center shadow">
+                            🥉 #3
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-800">
+                            Peringkat 3
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-black text-lg text-white line-clamp-1">{top3.name}</div>
+                          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 font-bold border border-purple-800/60 text-[10px]">
+                              {top3.section}
+                            </span>
+                            <span>Kls {top3.kelas} · Asr {top3.asrama}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-xs text-slate-400">Skor Prestasi:</span>
+                          <span className="text-xl font-black text-amber-400">{top3.totalScore} Pts</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                          <span>Wajib: {top3.wajibPercentage}% ({top3.wajibPresentCount}/{top3.totalWajibDays})</span>
+                          {top3.sunnahPresentCount > 0 ? (
+                            <span className="font-bold text-amber-300 flex items-center gap-1">
+                              <Star size={11} className="fill-amber-400 text-amber-400" />
+                              {top3.sunnahPresentCount} Sunnah (+{top3.sunnahBonusPoints})
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">0 Sunnah</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-950 rounded-2xl border border-slate-800">
+                  Belum cukup data sesi yang disubmit untuk menampilkan podium anggota terbaik.
+                </div>
+              )}
+
+              {/* TOP 4 - 10 MEMBERS (GRID) */}
+              {topRest.length > 0 && (
+                <div className="space-y-2.5 pt-2">
+                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Award size={14} className="text-purple-400" /> Peringkat 4 Sampai 10 Besar:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    {topRest.map((m, idx) => (
+                      <div key={m.id} className="p-3 bg-slate-950/80 border border-slate-800 hover:border-purple-600/40 rounded-2xl flex items-center justify-between gap-2 shadow-sm">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
+                            #{idx + 4}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-white truncate">{m.name}</div>
+                            <div className="text-[10px] text-purple-300">{m.section} · Kls {m.kelas}</div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-xs font-black text-amber-300">{m.totalScore} Pts</div>
+                          {m.sunnahPresentCount > 0 ? (
+                            <div className="text-[10px] font-bold text-amber-400 flex items-center justify-end gap-0.5">
+                              <Star size={9} className="fill-amber-400" /> {m.sunnahPresentCount} Sunnah
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-500">{m.wajibPercentage}% Wajib</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. LEADERBOARD SECTION (RATA-RATA INSTRUMEN) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <Music size={18} className="text-amber-400" />
+                    Peringkat Disiplin Unit Section Instrumen
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Rata-rata persentase kehadiran 4 seksi korps PGT Mu'allimin.
+                  </p>
                 </div>
               </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
                 {sectionLeaderboard.map((board, index) => (
                   <div key={board.section} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                    <div className="flex justify-between items-center"><span className="text-[10px] text-slate-400 font-bold">#{index + 1} {board.section}</span></div>
-                    <div className="text-xl font-black text-amber-300">{board.average}%</div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-slate-400 font-bold">#{index + 1} {board.section}</span>
+                      <span className="text-[10px] text-purple-300 font-semibold">{board.members} Pemain</span>
+                    </div>
+                    <div className="text-2xl font-black text-amber-300 tabular-nums">{board.average}%</div>
+                    <div className="text-[10px] text-slate-500">{board.presentTotal} Total Hadir</div>
                   </div>
                 ))}
               </div>
             </div>
-            {/* Inline Table for Recap */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-               <div className="flex justify-between items-center">
-                  <h3 className="text-base font-bold text-white">Rekap Individual</h3>
-                  <div className="flex items-center gap-1.5 overflow-x-auto">
-                    {sections.map(sec => (
-                      <button key={sec} onClick={() => setSelectedSection(sec)} className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${selectedSection === sec ? 'bg-purple-600 text-white' : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'}`}>{sec}</button>
-                    ))}
-                  </div>
-               </div>
-               <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950/80 border-b border-slate-800 text-[11px] font-bold uppercase text-slate-400">
-                        <th className="py-3 px-4">Nama</th>
-                        <th className="py-3 px-3 text-center">H</th>
-                        <th className="py-3 px-3 text-center">S</th>
-                        <th className="py-3 px-3 text-center">I</th>
-                        <th className="py-3 px-3 text-center">A</th>
-                        <th className="py-3 px-4 text-center">%</th>
+
+            {/* 4. REKAPITULASI DETAIL & PENANDAAN LATIHAN SUNNAH */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-5">
+              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                    <FileSpreadsheet size={18} className="text-emerald-400" />
+                    Tabel Rekapitulasi & Penandaan Kehadiran Latihan Sunnah
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Menampilkan rincian sesi wajib, penandaan bintang sesi sunnah, dan total skor prestasi anggota ({filteredRecap.length} Pemain).
+                  </p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative w-full sm:w-64">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={recapSearchQuery}
+                    onChange={(e) => setRecapSearchQuery(e.target.value)}
+                    placeholder="Cari nama / kelas / asrama..."
+                    className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* Filters Bar: Section + Sunnah Attendance */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
+                {/* Section filter pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1">
+                    <Filter size={12} /> Section:
+                  </span>
+                  {sections.map(sec => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setSelectedSection(sec)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        selectedSection === sec
+                          ? 'bg-purple-700 text-white shadow-md'
+                          : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      {sec}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Sunnah participation filter */}
+                <div className="flex items-center gap-1.5 overflow-x-auto">
+                  <button
+                    type="button"
+                    onClick={() => setRecapSunnahFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      recapSunnahFilter === 'all'
+                        ? 'bg-slate-800 text-white border border-slate-700'
+                        : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    Semua Anggota
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecapSunnahFilter('sunnah_only')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      recapSunnahFilter === 'sunnah_only'
+                        ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-black shadow-md'
+                        : 'bg-amber-950/40 text-amber-300 border border-amber-500/40 hover:bg-amber-900/40'
+                    }`}
+                  >
+                    <Sparkles size={12} className={recapSunnahFilter === 'sunnah_only' ? 'text-slate-950' : 'text-amber-400'} />
+                    <span>⭐ Peserta Sunnah ({recapData.filter(s => s.sunnahPresentCount > 0).length})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecapSunnahFilter('perfect_only')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      recapSunnahFilter === 'perfect_only'
+                        ? 'bg-emerald-700 text-white shadow-md'
+                        : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    💯 100% Wajib
+                  </button>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-800">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950 border-b border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                      <th className="py-3.5 px-3 text-center w-12">Rank</th>
+                      <th className="py-3.5 px-4">Nama Anggota</th>
+                      <th className="py-3.5 px-3 text-center">Unit</th>
+                      <th className="py-3.5 px-3 text-center">Sesi Wajib</th>
+                      <th className="py-3.5 px-4 text-center bg-amber-950/20 text-amber-300 border-x border-amber-500/20">
+                        ⭐ Hadir Sunnah (Bonus)
+                      </th>
+                      <th className="py-3.5 px-2 text-center text-emerald-400">H</th>
+                      <th className="py-3.5 px-2 text-center text-amber-400">S</th>
+                      <th className="py-3.5 px-2 text-center text-sky-400">I</th>
+                      <th className="py-3.5 px-2 text-center text-rose-400">A</th>
+                      <th className="py-3.5 px-4 text-center font-black text-amber-300">Skor Prestasi</th>
+                      <th className="py-3.5 px-3 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-xs">
+                    {filteredRecap.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-8 text-center text-slate-500 text-xs">
+                          Tidak ada data anggota yang cocok dengan filter yang dipilih.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60 text-xs">
-                      {recapData.filter(s => selectedSection === 'All' || s.section === selectedSection).map((student) => (
-                        <tr key={student.id} className="hover:bg-slate-800/40">
-                          <td className="py-3 px-4 font-bold text-slate-100">{student.name}</td>
-                          <td className="py-3 px-3 text-center text-emerald-400">{student.hadirCount}</td>
-                          <td className="py-3 px-3 text-center text-amber-400">{student.sakitCount}</td>
-                          <td className="py-3 px-3 text-center text-sky-400">{student.izinCount}</td>
-                          <td className="py-3 px-3 text-center text-rose-400">{student.alfaCount}</td>
-                          <td className="py-3 px-4 text-center font-black text-white">{student.percentage}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-               </div>
+                    ) : (
+                      filteredRecap.map((student, index) => {
+                        const isTop3 = index < 3;
+                        const rankMedal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`;
+                        const hasSunnah = student.sunnahPresentCount > 0;
+
+                        return (
+                          <tr 
+                            key={student.id} 
+                            className={`transition-colors ${
+                              isTop3 
+                                ? 'bg-amber-950/10 hover:bg-amber-950/20' 
+                                : 'hover:bg-slate-800/40'
+                            }`}
+                          >
+                            <td className="py-3 px-3 text-center font-black">
+                              <span className={isTop3 ? 'text-base' : 'text-slate-400 font-mono text-xs'}>
+                                {rankMedal}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4">
+                              <div className="font-extrabold text-white flex items-center gap-1.5">
+                                <span>{student.name}</span>
+                                {hasSunnah && (
+                                  <span className="text-[10px] font-black px-1.5 py-0.2 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-0.5">
+                                    <Star size={9} className="fill-amber-400 text-amber-400" /> Bintang
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                Kls {student.kelas || '-'} · Asrama {student.asrama || '-'}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-purple-950 text-purple-300 border border-purple-800/60">
+                                {student.section}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-3 text-center font-mono">
+                              <div className="font-bold text-white">{student.wajibPresentCount}/{student.totalWajibDays}</div>
+                              <div className="text-[10px] text-slate-400 font-sans">{student.wajibPercentage}%</div>
+                            </td>
+
+                            {/* Penandaan Kehadiran Latihan Sunnah */}
+                            <td className="py-3 px-4 text-center bg-amber-950/10 border-x border-amber-500/20">
+                              {hasSunnah ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 font-black text-xs border border-amber-500/50 shadow-sm">
+                                  <Sparkles size={11} className="text-amber-400" />
+                                  <span>{student.sunnahPresentCount} Sesi (+{student.sunnahBonusPoints} Pts)</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 text-xs font-mono">-</span>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-2 text-center text-emerald-400 font-bold">{student.hadirCount}</td>
+                            <td className="py-3 px-2 text-center text-amber-400">{student.sakitCount}</td>
+                            <td className="py-3 px-2 text-center text-sky-400">{student.izinCount}</td>
+                            <td className="py-3 px-2 text-center text-rose-400">{student.alfaCount}</td>
+
+                            <td className="py-3 px-4 text-center">
+                              <div className="font-black text-sm text-amber-300 tabular-nums">
+                                {student.totalScore} <span className="text-[10px] text-amber-400/80 font-normal">Pts</span>
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3 text-center">
+                              {student.sunnahPresentCount >= 2 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                                  🌟 Teladan
+                                </span>
+                              ) : student.wajibPercentage >= 80 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 text-[10px] font-semibold border border-emerald-800">
+                                  Disiplin
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 text-[10px] font-semibold border border-rose-800">
+                                  Perlu Binaan
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
+      }
 
       case 'members':
         return (

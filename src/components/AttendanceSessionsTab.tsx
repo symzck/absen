@@ -25,6 +25,7 @@ export interface AttendanceSession {
   id?: string;
   date: string;
   sessionName?: string;
+  sessionType?: 'wajib' | 'sunnah';
   scheduledTime?: string;
   location?: string;
   targetSection?: string;
@@ -593,6 +594,17 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                       <span className="text-base font-extrabold text-white">
                         {session.sessionName || 'Latihan Rutin'}
                       </span>
+
+                      {/* Sunnah / Wajib Badge */}
+                      {session.sessionType === 'sunnah' || session.sessionName?.toLowerCase().includes('sunnah') ? (
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/50 text-[10px] font-black flex items-center gap-1 shadow-sm">
+                          <Sparkles size={11} className="text-amber-400" /> Sesi Sunnah (+Bonus)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 text-[10px] font-bold">
+                          🏛️ Wajib
+                        </span>
+                      )}
 
                       {/* Status Badges */}
                       {isClosed ? (

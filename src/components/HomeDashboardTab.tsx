@@ -265,21 +265,37 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isAdmin && onOpenScheduleModal && (
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenScheduleModal && (
               <button
                 type="button"
                 onClick={() => onOpenScheduleModal()}
-                className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 border border-amber-300/60 active:scale-95 transition-all cursor-pointer ring-2 ring-amber-400/20"
               >
                 <Plus size={15} />
                 <span>+ Jadwalkan Sesi Latihan</span>
               </button>
             )}
+            {onOpenScheduleModal && (
+              <button
+                type="button"
+                onClick={() => onOpenScheduleModal({
+                  date: todayStr,
+                  sessionName: 'Latihan Sunnah & Pengayaan Mandiri',
+                  sessionType: 'sunnah',
+                  records: []
+                })}
+                className="px-3.5 py-2.5 bg-gradient-to-r from-purple-900/90 to-indigo-900/90 hover:from-purple-800 hover:to-indigo-800 text-amber-300 hover:text-white font-bold rounded-2xl text-xs flex items-center gap-1.5 border border-purple-500/50 shadow-md shadow-purple-950/40 active:scale-95 transition-all cursor-pointer"
+                title="Jadwalkan Sesi Latihan Sunnah Berpoin Bonus"
+              >
+                <Sparkles size={14} className="text-amber-400" />
+                <span>+ Latihan Sunnah ⭐</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onNavigateTab('sessions')}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-2xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
             >
               <span>Semua Sesi ({scheduledSessions.length})</span>
               <ChevronRight size={14} />
@@ -329,9 +345,21 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-purple-900/40 text-purple-300 border-purple-700/50 flex items-center gap-1">
-                        <Calendar size={11} /> {session.date} {isToday ? '(Hari Ini)' : ''}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-purple-900/40 text-purple-300 border-purple-700/50 flex items-center gap-1">
+                          <Calendar size={11} /> {session.date} {isToday ? '(Hari Ini)' : ''}
+                        </span>
+
+                        {session.sessionType === 'sunnah' || session.sessionName?.toLowerCase().includes('sunnah') ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/50 flex items-center gap-1 shadow-sm">
+                            <Sparkles size={10} className="text-amber-400" /> Sunnah (+Bonus)
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                            Wajib
+                          </span>
+                        )}
+                      </div>
 
                       {isClosed ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
