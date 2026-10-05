@@ -39,7 +39,11 @@ import {
   Announcement,
   subscribeAnnouncements,
   saveAnnouncementToCloud,
-  deleteAnnouncementFromCloud
+  deleteAnnouncementFromCloud,
+  subscribeDeletedAnnouncements,
+  subscribeDeletedAttendances,
+  subscribeDeletedStudents,
+  subscribeDeletedUsers
 } from './services/db';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -346,6 +350,16 @@ export default function App() {
     }
   };
 
+  // Helper for tracking explicitly deleted attendance session IDs
+  const getDeletedAttendanceIds = (): Set<string> => {
+    try {
+      const saved = localStorage.getItem('pgt_deleted_attendance_ids');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  };
+
   // Announcements State (Synced with localStorage and Cloud Firestore, respecting deletions)
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
     const deletedIds = getDeletedAnnouncementIds();
@@ -526,9 +540,75 @@ export default function App() {
       setSyncError(err);
     });
 
-    // Check & auto-seed if cloud database is empty
-    seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS).catch((err) => {
+    // Check & auto-seed if cloud database is empty (including announcements)
+    seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS, INITIAL_ANNOUNCEMENTS).catch((err) => {
       console.warn('[Firestore] Seed check notice:', err);
+    });
+
+    // Real-time listener for deleted announcements from Cloud Firestore
+    const unsubDeletedAnnouncements = subscribeDeletedAnnouncements((cloudDeletedIds) => {
+      if (Array.isArray(cloudDeletedIds) && cloudDeletedIds.length > 0) {
+        const localSet = getDeletedAnnouncementIds();
+        let changed = false;
+        cloudDeletedIds.forEach(id => {
+          if (!localSet.has(id)) {
+            localSet.add(id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('pgt_deleted_announcement_ids', JSON.stringify(Array.from(localSet)));
+        }
+        setAnnouncements(prev => {
+          const filtered = prev.filter(a => !localSet.has(a.id));
+          localStorage.setItem('pgt_announcements', JSON.stringify(filtered));
+          return filtered;
+        });
+      }
+    });
+
+    // Real-time listener for deleted attendances/sessions from Cloud Firestore
+    const unsubDeletedAttendances = subscribeDeletedAttendances((cloudDeletedIds) => {
+      if (Array.isArray(cloudDeletedIds) && cloudDeletedIds.length > 0) {
+        const localSet = getDeletedAttendanceIds();
+        let changed = false;
+        cloudDeletedIds.forEach(id => {
+          if (!localSet.has(id)) {
+            localSet.add(id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('pgt_deleted_attendance_ids', JSON.stringify(Array.from(localSet)));
+        }
+        setAttendances(prev => {
+          const filtered = prev.filter(s => !localSet.has(s.id || '') && !localSet.has(`sesi-${s.date}`) && !localSet.has(s.date));
+          localStorage.setItem('pgt_attendances', JSON.stringify(filtered));
+          return filtered;
+        });
+      }
+    });
+
+    // Real-time listener for deleted students from Cloud Firestore
+    const unsubDeletedStudents = subscribeDeletedStudents((cloudDeletedIds) => {
+      if (Array.isArray(cloudDeletedIds) && cloudDeletedIds.length > 0) {
+        const localSet = getDeletedStudentIds();
+        let changed = false;
+        cloudDeletedIds.forEach(id => {
+          if (!localSet.has(id)) {
+            localSet.add(id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem('pgt_deleted_student_ids', JSON.stringify(Array.from(localSet)));
+        }
+        setStudents(prev => {
+          const filtered = prev.filter(s => !localSet.has(s.id));
+          localStorage.setItem('pgt_students', JSON.stringify(filtered));
+          return filtered;
+        });
+      }
     });
 
     // Real-time listener for students (Authoritative Cloud Sync: respects deletions and local-only additions)
@@ -559,18 +639,34 @@ export default function App() {
       }
     });
 
-    // Real-time listener for attendances
+    // Real-time listener for attendances (Authoritative Cloud Sync)
     const unsubAttendances = subscribeAttendances((remoteAttendances) => {
-      if (remoteAttendances && remoteAttendances.length > 0) {
+      if (Array.isArray(remoteAttendances)) {
+        const deletedIds = getDeletedAttendanceIds();
         setAttendances(prev => {
-          const merged = [...remoteAttendances];
-          prev.forEach(localSess => {
-            const exists = merged.some(r => r.id === localSess.id || r.date === localSess.date);
-            if (!exists) {
-              merged.push(localSess);
+          const map = new Map<string, DailyAttendance>();
+
+          // Remote attendances from Cloud Firestore (primary source of truth)
+          remoteAttendances.forEach(ra => {
+            const docId = ra.id || `sesi-${ra.date}`;
+            if (!deletedIds.has(docId) && !deletedIds.has(ra.date)) {
+              map.set(docId, ra);
             }
           });
-          const sorted = sortSessionsByClosest(merged);
+
+          // Preserve only recent local additions waiting for cloud write
+          if (prev && prev.length > 0) {
+            prev.forEach(localSess => {
+              const docId = localSess.id || `sesi-${localSess.date}`;
+              if (!deletedIds.has(docId) && !deletedIds.has(localSess.date) && !map.has(docId)) {
+                if (localSess.id && localSess.id.startsWith('sesi-custom-')) {
+                  map.set(docId, localSess);
+                }
+              }
+            });
+          }
+
+          const sorted = sortSessionsByClosest(Array.from(map.values()));
           localStorage.setItem('pgt_attendances', JSON.stringify(sorted));
           return sorted;
         });
@@ -596,32 +692,26 @@ export default function App() {
       }
     });
 
-    // Real-time listener for announcements
+    // Real-time listener for announcements (Authoritative Cloud Sync: respects deletions across all devices)
     const unsubAnnouncements = subscribeAnnouncements((remoteAnn) => {
       if (Array.isArray(remoteAnn)) {
         const deletedIds = getDeletedAnnouncementIds();
         setAnnouncements(prev => {
           const map = new Map<string, Announcement>();
 
-          // 1. Seed initial announcements if not deleted
-          INITIAL_ANNOUNCEMENTS.forEach(a => {
-            if (!deletedIds.has(a.id)) {
-              map.set(a.id, a);
-            }
-          });
-
-          // 2. Overwrite with Cloud Firestore announcements if not deleted
+          // 1. Authoritative announcements from Cloud Firestore
           remoteAnn.forEach(ra => {
             if (!deletedIds.has(ra.id)) {
               map.set(ra.id, ra);
             }
           });
 
-          // 3. Merge local announcements if not deleted
+          // 2. Preserve only brand new un-synced local additions created in current session
           if (prev && prev.length > 0) {
             prev.forEach(a => {
-              if (!deletedIds.has(a.id)) {
-                map.set(a.id, { ...map.get(a.id), ...a });
+              const isRecentTemp = a.id.startsWith('ann-') && a.id.length > 15;
+              if (isRecentTemp && !deletedIds.has(a.id) && !map.has(a.id)) {
+                map.set(a.id, a);
               }
             });
           }
@@ -643,6 +733,9 @@ export default function App() {
       unsubAttendances();
       unsubUsers();
       unsubAnnouncements();
+      unsubDeletedAnnouncements();
+      unsubDeletedAttendances();
+      unsubDeletedStudents();
     };
   }, []);
 
@@ -1511,6 +1604,10 @@ export default function App() {
   };
 
   const handleDeleteSession = async (sessionIdentifier: string) => {
+    const deletedSet = getDeletedAttendanceIds();
+    deletedSet.add(sessionIdentifier);
+    localStorage.setItem('pgt_deleted_attendance_ids', JSON.stringify(Array.from(deletedSet)));
+
     setAttendances(prev => {
       const next = prev.filter(s => s.id !== sessionIdentifier && `sesi-${s.date}` !== sessionIdentifier);
       localStorage.setItem('pgt_attendances', JSON.stringify(next));
@@ -2115,10 +2212,10 @@ export default function App() {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
                   <div className="text-lg font-black text-white">{students.length}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Pemain / Anggota</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Pemain</div>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
                   <div className="text-lg font-black text-white">{attendances.length}</div>
@@ -2126,7 +2223,11 @@ export default function App() {
                 </div>
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
                   <div className="text-lg font-black text-white">{systemUsers.length}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Akun Pengguna</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Akun Tim</div>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
+                  <div className="text-lg font-black text-white">{announcements.length}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">Pengumuman</div>
                 </div>
               </div>
 
@@ -2142,7 +2243,7 @@ export default function App() {
                 onClick={async () => {
                   setIsManualSyncing(true);
                   try {
-                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers);
+                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers, announcements);
                     triggerToast(res.message);
                     if (res.success) {
                       setShowSyncInfoModal(false);

@@ -75,22 +75,20 @@ export const subscribeStudents = (
     colRef,
     (snapshot) => {
       notifyStatus('connected');
-      if (!snapshot.empty) {
-        const list: Student[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data() as Student;
-          list.push({
-            id: Number(data.id || d.id),
-            name: data.name || '',
-            kelas: data.kelas || '',
-            asrama: data.asrama || 'A',
-            section: data.section || 'Brass'
-          });
+      const list: Student[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as Student;
+        list.push({
+          id: Number(data.id || d.id),
+          name: data.name || '',
+          kelas: data.kelas || '',
+          asrama: data.asrama || 'A',
+          section: data.section || 'Brass'
         });
-        // Sort by ID ascending
-        list.sort((a, b) => a.id - b.id);
-        onData(list);
-      }
+      });
+      // Sort by ID ascending
+      list.sort((a, b) => a.id - b.id);
+      onData(list);
     },
     (error) => {
       console.warn('[Firestore] Students subscription offline/not found:', error.message);
@@ -197,11 +195,42 @@ export const deleteStudentFromCloud = async (studentId: number): Promise<void> =
   try {
     const docRef = doc(db, 'students', String(studentId));
     await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+
+    // Record deletion tombstone in Cloud Firestore so all devices respect deletion
+    const tombstoneRef = doc(db, 'deleted_students', String(studentId));
+    await withTimeout(
+      setDoc(tombstoneRef, {
+        id: studentId,
+        deletedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting student from cloud:', error?.message);
     notifyStatus('offline', error?.message);
   }
+};
+
+export const subscribeDeletedStudents = (
+  onData: (deletedIds: number[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe => {
+  const colRef = collection(db, 'deleted_students');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const ids: number[] = [];
+      snapshot.forEach((d) => {
+        ids.push(Number(d.id));
+      });
+      onData(ids);
+    },
+    (error) => {
+      if (onError) onError(error);
+    }
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -218,32 +247,30 @@ export const subscribeAttendances = (
     colRef,
     (snapshot) => {
       notifyStatus('connected');
-      if (!snapshot.empty) {
-        const list: DailyAttendance[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data();
-          list.push({
-            id: data.id || d.id,
-            date: data.date || '',
-            sessionName: data.sessionName || 'Latihan Rutin',
-            scheduledTime: data.scheduledTime || undefined,
-            location: data.location || undefined,
-            targetSection: data.targetSection || undefined,
-            description: data.description || undefined,
-            isScheduled: data.isScheduled ?? undefined,
-            isClosed: data.isClosed ?? false,
-            closedAt: data.closedAt || null,
-            closedBy: data.closedBy || null,
-            isSubmitted: data.isSubmitted !== false,
-            submittedAt: data.submittedAt || null,
-            submittedBy: data.submittedBy || null,
-            records: Array.isArray(data.records) ? data.records : []
-          });
+      const list: DailyAttendance[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        list.push({
+          id: data.id || d.id,
+          date: data.date || '',
+          sessionName: data.sessionName || 'Latihan Rutin',
+          scheduledTime: data.scheduledTime || undefined,
+          location: data.location || undefined,
+          targetSection: data.targetSection || undefined,
+          description: data.description || undefined,
+          isScheduled: data.isScheduled ?? undefined,
+          isClosed: data.isClosed ?? false,
+          closedAt: data.closedAt || null,
+          closedBy: data.closedBy || null,
+          isSubmitted: data.isSubmitted !== false,
+          submittedAt: data.submittedAt || null,
+          submittedBy: data.submittedBy || null,
+          records: Array.isArray(data.records) ? data.records : []
         });
-        // Sort by date descending
-        list.sort((a, b) => b.date.localeCompare(a.date));
-        onData(list);
-      }
+      });
+      // Sort by date descending
+      list.sort((a, b) => b.date.localeCompare(a.date));
+      onData(list);
     },
     (error) => {
       console.warn('[Firestore] Attendances subscription offline/not found:', error.message);
@@ -292,11 +319,42 @@ export const deleteAttendanceFromCloud = async (attendanceId: string): Promise<v
   try {
     const docRef = doc(db, 'attendances', attendanceId);
     await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+
+    // Record deletion tombstone in Cloud Firestore
+    const tombstoneRef = doc(db, 'deleted_attendances', attendanceId);
+    await withTimeout(
+      setDoc(tombstoneRef, {
+        id: attendanceId,
+        deletedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting attendance from cloud:', error?.message);
     notifyStatus('offline', error?.message);
   }
+};
+
+export const subscribeDeletedAttendances = (
+  onData: (deletedIds: string[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe => {
+  const colRef = collection(db, 'deleted_attendances');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const ids: string[] = [];
+      snapshot.forEach((d) => {
+        ids.push(d.id);
+      });
+      onData(ids);
+    },
+    (error) => {
+      if (onError) onError(error);
+    }
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -313,22 +371,20 @@ export const subscribeSystemUsers = (
     colRef,
     (snapshot) => {
       notifyStatus('connected');
-      if (!snapshot.empty) {
-        const list: SystemUser[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data() as SystemUser;
-          list.push({
-            id: data.id || d.id,
-            username: data.username || '',
-            password: data.password || '',
-            fullName: data.fullName || '',
-            role: (data.role as 'admin' | 'petugas') || 'petugas',
-            assignedSection: data.assignedSection || 'All',
-            createdAt: data.createdAt || ''
-          });
+      const list: SystemUser[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as SystemUser;
+        list.push({
+          id: data.id || d.id,
+          username: data.username || '',
+          password: data.password || '',
+          fullName: data.fullName || '',
+          role: (data.role as 'admin' | 'petugas') || 'petugas',
+          assignedSection: data.assignedSection || 'All',
+          createdAt: data.createdAt || ''
         });
-        onData(list);
-      }
+      });
+      onData(list);
     },
     (error) => {
       console.warn('[Firestore] Users subscription offline/not found:', error.message);
@@ -368,11 +424,42 @@ export const deleteUserFromCloud = async (userId: string): Promise<void> => {
   try {
     const docRef = doc(db, 'system_users', userId);
     await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+
+    // Record deletion tombstone in Cloud Firestore
+    const tombstoneRef = doc(db, 'deleted_users', userId);
+    await withTimeout(
+      setDoc(tombstoneRef, {
+        id: userId,
+        deletedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting user from cloud:', error?.message);
     notifyStatus('offline', error?.message);
   }
+};
+
+export const subscribeDeletedUsers = (
+  onData: (deletedIds: string[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe => {
+  const colRef = collection(db, 'deleted_users');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const ids: string[] = [];
+      snapshot.forEach((d) => {
+        ids.push(d.id);
+      });
+      onData(ids);
+    },
+    (error) => {
+      if (onError) onError(error);
+    }
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -402,34 +489,53 @@ export const subscribeAnnouncements = (
     colRef,
     (snapshot) => {
       notifyStatus('connected');
-      if (!snapshot.empty) {
-        const list: Announcement[] = [];
-        snapshot.forEach((d) => {
-          const data = d.data() as Announcement;
-          list.push({
-            id: data.id || d.id,
-            title: data.title || '',
-            content: data.content || '',
-            category: data.category || 'info',
-            targetAudience: data.targetAudience || 'All',
-            author: data.author || 'Admin PGT',
-            authorRole: data.authorRole || 'Administrator',
-            createdAt: data.createdAt || new Date().toISOString().split('T')[0],
-            pinned: Boolean(data.pinned),
-            isAuto: Boolean(data.isAuto)
-          });
+      const list: Announcement[] = [];
+      snapshot.forEach((d) => {
+        const data = d.data() as Announcement;
+        list.push({
+          id: data.id || d.id,
+          title: data.title || '',
+          content: data.content || '',
+          category: data.category || 'info',
+          targetAudience: data.targetAudience || 'All',
+          author: data.author || 'Admin PGT',
+          authorRole: data.authorRole || 'Administrator',
+          createdAt: data.createdAt || new Date().toISOString().split('T')[0],
+          pinned: Boolean(data.pinned),
+          isAuto: Boolean(data.isAuto)
         });
-        // Sort: pinned first, then by date descending
-        list.sort((a, b) => {
-          if (a.pinned && !b.pinned) return -1;
-          if (!a.pinned && b.pinned) return 1;
-          return b.createdAt.localeCompare(a.createdAt);
-        });
-        onData(list);
-      }
+      });
+      // Sort: pinned first, then by date descending
+      list.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return b.createdAt.localeCompare(a.createdAt);
+      });
+      onData(list);
     },
     (error) => {
       console.warn('[Firestore] Announcements subscription notice:', error.message);
+      if (onError) onError(error);
+    }
+  );
+};
+
+export const subscribeDeletedAnnouncements = (
+  onData: (deletedIds: string[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe => {
+  const colRef = collection(db, 'deleted_announcements');
+  return onSnapshot(
+    colRef,
+    (snapshot) => {
+      const ids: string[] = [];
+      snapshot.forEach((d) => {
+        ids.push(d.id);
+      });
+      onData(ids);
+    },
+    (error) => {
+      console.warn('[Firestore] Deleted announcements subscription notice:', error?.message);
       if (onError) onError(error);
     }
   );
@@ -468,6 +574,17 @@ export const deleteAnnouncementFromCloud = async (announcementId: string): Promi
   try {
     const docRef = doc(db, 'announcements', announcementId);
     await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+
+    // Permanently record deletion in Cloud Firestore so all devices across network respect deletion
+    const tombstoneRef = doc(db, 'deleted_announcements', announcementId);
+    await withTimeout(
+      setDoc(tombstoneRef, {
+        id: announcementId,
+        deletedAt: new Date().toISOString()
+      }, { merge: true }),
+      3500,
+      'Cloud timeout'
+    );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting announcement from cloud:', error?.message);
@@ -481,16 +598,25 @@ export const deleteAnnouncementFromCloud = async (announcementId: string): Promi
 
 export const seedInitialDatabaseIfEmpty = async (
   initialStudents: Student[],
-  initialUsers: SystemUser[]
+  initialUsers: SystemUser[],
+  initialAnnouncements: Announcement[] = []
 ): Promise<{ seeded: boolean; message: string }> => {
   try {
     const studentSnapshot = await withTimeout(getDocs(collection(db, 'students')), 3000, 'Cloud timeout');
     const userSnapshot = await withTimeout(getDocs(collection(db, 'system_users')), 3000, 'Cloud timeout');
+    const annSnapshot = await withTimeout(getDocs(collection(db, 'announcements')), 3000, 'Cloud timeout');
+    const deletedAnnSnapshot = await withTimeout(getDocs(collection(db, 'deleted_announcements')), 3000, 'Cloud timeout');
+
+    const deletedAnnIds = new Set<string>();
+    if (!deletedAnnSnapshot.empty) {
+      deletedAnnSnapshot.forEach(d => deletedAnnIds.add(d.id));
+    }
 
     const shouldSeedStudents = studentSnapshot.empty;
     const shouldSeedUsers = userSnapshot.empty;
+    const shouldSeedAnnouncements = annSnapshot.empty;
 
-    if (shouldSeedStudents || shouldSeedUsers) {
+    if (shouldSeedStudents || shouldSeedUsers || (shouldSeedAnnouncements && initialAnnouncements.length > 0)) {
       notifyStatus('syncing');
       
       const batch = writeBatch(db);
@@ -505,6 +631,19 @@ export const seedInitialDatabaseIfEmpty = async (
         initialUsers.forEach((user) => {
           const ref = doc(db, 'system_users', user.id);
           batch.set(ref, user, { merge: true });
+        });
+      }
+
+      if (shouldSeedAnnouncements) {
+        initialAnnouncements.forEach((ann) => {
+          // Never re-seed an announcement that was explicitly deleted!
+          if (!deletedAnnIds.has(ann.id)) {
+            const ref = doc(db, 'announcements', ann.id);
+            batch.set(ref, {
+              ...ann,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
         });
       }
 
@@ -527,7 +666,8 @@ export const seedInitialDatabaseIfEmpty = async (
 export const uploadAllLocalDataToCloud = async (
   students: Student[],
   attendances: DailyAttendance[],
-  users: SystemUser[]
+  users: SystemUser[],
+  announcements: Announcement[] = []
 ): Promise<{ success: boolean; message: string }> => {
   notifyStatus('syncing');
   try {
@@ -585,11 +725,22 @@ export const uploadAllLocalDataToCloud = async (
       }, { merge: true });
     });
 
+    // Also persist announcements to cloud
+    if (announcements && announcements.length > 0) {
+      announcements.forEach((ann) => {
+        const ref = doc(db, 'announcements', ann.id);
+        batch.set(ref, {
+          ...ann,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      });
+    }
+
     await withTimeout(batch.commit(), 4000, 'Koneksi timeout');
     notifyStatus('connected');
     return { 
       success: true, 
-      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi) berhasil disimpan ke Cloud Database!` 
+      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi, ${announcements.length} pengumuman) berhasil disimpan ke Cloud Database!` 
     };
   } catch (error: any) {
     console.warn('[Firestore] Bulk upload notice:', error?.message);
