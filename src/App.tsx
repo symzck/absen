@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Users, ClipboardList, BarChart3, LogOut, Download, 
   UserPlus, Trash2, CheckCircle2, AlertCircle, Menu, X, Save,
@@ -473,21 +473,39 @@ export default function App() {
     return hadOpenModal;
   };
 
-  // Undo / Go Back Action
-  const handleGoBack = () => {
-    // 1. If any modal is open, close modal first
-    if (closeAllModals()) return;
+  // Check if any overlay modal or drawer is active
+  const isAnyModalOpen = Boolean(
+    isScheduleModalOpen || isPaperSheetModalOpen || isInlineEditMode ||
+    isClearAllModalOpen || isEditMemberModalOpen || isAddMemberModalOpen ||
+    isSubmitConfirmOpen || isRestoreModalOpen || isUserModalOpen ||
+    isAdminPassModalOpen || showSyncInfoModal || isMobileMenuOpen
+  );
 
-    // 2. If browser history state exists and we are not on home, go back in history
-    if (window.history.state && window.history.state.tab && activeTab !== 'home') {
-      window.history.back();
+  const modalPushedRef = useRef(false);
+  const isClosingModalViaUIRef = useRef(false);
+
+  // Sync open modals with device history so pressing the native back button closes the modal
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      if (!modalPushedRef.current) {
+        modalPushedRef.current = true;
+        const role = currentUser?.role || 'guest';
+        try {
+          window.history.pushState({ modal: true, role, tab: activeTab, selectedDate }, '', window.location.hash);
+        } catch (e) {}
+      }
     } else {
-      // 3. Fallback: return to Home
-      changeTab('home');
+      if (modalPushedRef.current) {
+        modalPushedRef.current = false;
+        if (window.history.state?.modal) {
+          isClosingModalViaUIRef.current = true;
+          window.history.back();
+        }
+      }
     }
-  };
+  }, [isAnyModalOpen, activeTab, selectedDate, currentUser]);
 
-  // Browser History popstate listener for back / undo button
+  // Browser History & Native Device Back Button Listener
   useEffect(() => {
     if (!window.history.state && currentUser) {
       const role = currentUser.role;
@@ -498,17 +516,20 @@ export default function App() {
     }
 
     const handlePopState = (e: PopStateEvent) => {
-      // Close open modals first
-      if (
-        isScheduleModalOpen || isPaperSheetModalOpen || isInlineEditMode ||
-        isClearAllModalOpen || isEditMemberModalOpen || isAddMemberModalOpen ||
-        isSubmitConfirmOpen || isRestoreModalOpen || isUserModalOpen ||
-        isAdminPassModalOpen || showSyncInfoModal || isMobileMenuOpen
-      ) {
+      // 1. If popstate was triggered by our internal cleanup of a modal closed via UI, ignore
+      if (isClosingModalViaUIRef.current) {
+        isClosingModalViaUIRef.current = false;
+        return;
+      }
+
+      // 2. If any modal is currently open when the user presses native device back, close the modal first
+      if (modalPushedRef.current || isAnyModalOpen) {
+        modalPushedRef.current = false;
         closeAllModals();
         return;
       }
 
+      // 3. Navigate back according to history state
       const state = e.state;
       if (state && state.tab) {
         const validTabs: AppTab[] = ['home', 'attendance', 'admin_dashboard', 'announcements', 'sessions', 'recap', 'members', 'edit_absensi', 'google_sheets', 'manage_users', 'my_history'];
@@ -519,6 +540,7 @@ export default function App() {
           setSelectedDate(state.selectedDate);
         }
       } else {
+        // Fallback to Home when reaching root state
         setActiveTab('home');
       }
     };
@@ -526,7 +548,7 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, [
-    currentUser, activeTab, selectedDate,
+    currentUser, activeTab, selectedDate, isAnyModalOpen,
     isScheduleModalOpen, isPaperSheetModalOpen, isInlineEditMode,
     isClearAllModalOpen, isEditMemberModalOpen, isAddMemberModalOpen,
     isSubmitConfirmOpen, isRestoreModalOpen, isUserModalOpen,
@@ -2574,11 +2596,6 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {activeTab !== 'home' && (
-            <button type="button" onClick={handleGoBack} className="px-2.5 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-xs font-bold text-amber-300 flex items-center gap-1 transition-all shadow cursor-pointer">
-              <ArrowLeft size={14} className="text-amber-400" /> <span>Kembali</span>
-            </button>
-          )}
           <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-3.5 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer">
             {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />} <span>Menu</span>
           </button>
@@ -3232,11 +3249,6 @@ export default function App() {
   const DesktopHeader = () => (
     <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/60 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md">
       <div className="flex items-center gap-3">
-        {activeTab !== 'home' && (
-          <button type="button" onClick={handleGoBack} className="px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border border-purple-500/50 text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1.5 transition-all shadow cursor-pointer active:scale-95">
-            <ArrowLeft size={14} className="text-amber-400" /> <span>Kembali</span>
-          </button>
-        )}
         <div className="text-xs text-slate-400 font-medium">
           <span className="text-purple-400 font-bold uppercase tracking-wide">{currentUser?.role === 'admin' ? 'Admin Portal' : 'Petugas Portal'}</span>
           <span className="mx-2">/</span>
