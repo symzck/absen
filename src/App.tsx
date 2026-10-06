@@ -107,13 +107,22 @@ export interface SystemUser {
   createdAt: string;
 }
 
+// Cryptographic one-way SHA-256 hash helper to keep passwords secure
+export async function sha256Hash(text: string): Promise<string> {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
 // Akun Bawaan Sistem:
-// Admin awal disiapkan secara aman. Admin dapat mengubah kata sandi sendiri kapan saja.
+// Seluruh kata sandi dienkripsi dengan hashing SHA-256 satu arah agar tidak tampak oleh umum di repositori.
 const INITIAL_USERS: SystemUser[] = [
   {
     id: 'admin-master',
     username: 'admin',
-    password: 'admin#pgt', // Password awal admin, dapat diubah oleh pemilik di menu Admin
+    password: 'b951b138b45fe7f37ba3ac0899dfac8b5a29a831ff6b7acfb6e01406b230a018', // SHA-256 hash
     fullName: 'Administrator Utama (Kepala Korps)',
     role: 'admin',
     assignedSection: 'All',
@@ -122,7 +131,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-personalia',
     username: 'personalia',
-    password: 'personalia#pgt', // Password awal personalia band
+    password: '6ee220cdb413e209c606fb3209c694c94a6f78e8b133b2e1bd6f0a260860ed48', // SHA-256 hash
     fullName: 'Staff Personalia Band',
     role: 'personalia',
     assignedSection: 'All',
@@ -131,7 +140,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-petugas-umum',
     username: 'petugas',
-    password: 'pgt123',
+    password: 'b65ba2d2420f25df4277d305066be3e1aabe9d24a445f4ae5bc2e389b667992b', // SHA-256 hash
     fullName: 'Petugas Lapangan Umum',
     role: 'petugas',
     assignedSection: 'All',
@@ -140,7 +149,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-petugas-brass',
     username: 'petugas_brass',
-    password: 'brass123',
+    password: '80242505ce751ac0d33e3552ef371ed675acb7840e1d6f84de539665517be96c', // SHA-256 hash
     fullName: 'Petugas Section Brass',
     role: 'petugas',
     assignedSection: 'Brass',
@@ -149,7 +158,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-petugas-battery',
     username: 'petugas_battery',
-    password: 'battery123',
+    password: 'cd3e62603276e9ed2456269dd58e213dcebd8c119ce12c4d6f400431574b1e32', // SHA-256 hash
     fullName: 'Petugas Section Battery',
     role: 'petugas',
     assignedSection: 'Battery',
@@ -158,7 +167,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-petugas-cg',
     username: 'petugas_cg',
-    password: 'cg123',
+    password: 'b82bc611c66c26ce08c8bdb5e8557124f7f023fe00e3108341fe05de34c4ffa7', // SHA-256 hash
     fullName: 'Petugas Section Cologuard',
     role: 'petugas',
     assignedSection: 'Cologuard',
@@ -167,7 +176,7 @@ const INITIAL_USERS: SystemUser[] = [
   {
     id: 'user-petugas-pit',
     username: 'petugas_pit',
-    password: 'pit123',
+    password: '5bda588a1778627bf8c7d899dbabb7bde7379f20299886445086e55c2c14cd4e', // SHA-256 hash
     fullName: 'Petugas Section Pit',
     role: 'petugas',
     assignedSection: 'Pit',
@@ -961,15 +970,17 @@ export default function App() {
     }, isError ? 8000 : 4000);
   };
 
-  // Secure Unified Login Handler
-  const handleLogin = (e: React.FormEvent<HTMLFormElement>) => {
+  // Secure Unified Login Handler (with cryptographic SHA-256 and fallback support)
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const target = e.currentTarget;
     const username = (target.elements.namedItem('username') as HTMLInputElement).value.trim();
     const password = (target.elements.namedItem('password') as HTMLInputElement).value;
 
+    const enteredHash = await sha256Hash(password);
+
     const matchedUser = systemUsers.find(
-      u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+      u => u.username.toLowerCase() === username.toLowerCase() && (u.password === password || u.password === enteredHash)
     );
 
     if (matchedUser) {
@@ -1040,13 +1051,17 @@ export default function App() {
       return;
     }
 
+    const passToStore = cleanPass.length === 64 && /^[0-9a-f]+$/i.test(cleanPass)
+      ? cleanPass
+      : await sha256Hash(cleanPass);
+
     if (editingUserId) {
       // Update existing user
       const existingUser = systemUsers.find(u => u.id === editingUserId);
       const updatedUser: SystemUser = {
         id: editingUserId,
         username: cleanUsername,
-        password: cleanPass,
+        password: passToStore,
         fullName: cleanFullName,
         role: userFormRole,
         assignedSection: userFormSection,
@@ -1074,7 +1089,7 @@ export default function App() {
       const newUser: SystemUser = {
         id: 'user-' + Date.now(),
         username: cleanUsername,
-        password: cleanPass,
+        password: passToStore,
         fullName: cleanFullName,
         role: userFormRole,
         assignedSection: userFormSection,
@@ -1140,13 +1155,14 @@ export default function App() {
     }
 
     if (currentUser) {
-      const updatedAdmin: SystemUser = { ...currentUser, password: newAdminPass };
+      const hashedPass = await sha256Hash(newAdminPass);
+      const updatedAdmin: SystemUser = { ...currentUser, password: hashedPass };
       setSystemUsers(prev => prev.map(u => u.id === currentUser.id ? updatedAdmin : u));
       setCurrentUser(updatedAdmin);
       setIsAdminPassModalOpen(false);
       setNewAdminPass('');
       setConfirmAdminPass('');
-      triggerToast('Kata sandi rahasia Administrator Anda berhasil diubah & disimpan ke Cloud!');
+      triggerToast('Kata sandi rahasia Administrator Anda berhasil diubah & dienkripsi!');
 
       // Persist to Cloud Firestore
       try {
@@ -4165,7 +4181,7 @@ export default function App() {
                     required 
                     autoComplete="username"
                     className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700/80 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                    placeholder="Ketik username Anda (cth: personalia, admin, petugas)" 
+                    placeholder="Masukkan ID Pengguna / Username" 
                   />
                 </div>
               </div>

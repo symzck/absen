@@ -381,7 +381,7 @@ export const subscribeSystemUsers = (
           username: data.username || '',
           password: data.password || '',
           fullName: data.fullName || '',
-          role: (data.role as 'admin' | 'petugas') || 'petugas',
+          role: (data.role as 'admin' | 'petugas' | 'personalia') || 'petugas',
           assignedSection: data.assignedSection || 'All',
           createdAt: data.createdAt || ''
         });
