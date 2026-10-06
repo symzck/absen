@@ -35,3 +35,13 @@ Thumbs.db
 *.sln
 *.sw?
 
+# Redundant lockfiles
+bun.lock
+yarn.lock
+pnpm-lock.yaml
+
+# Platform internal configs (exclude from public GitHub repo)
+metadata.json
+firebase-applet-config.json
+firebase-blueprint.json
+
