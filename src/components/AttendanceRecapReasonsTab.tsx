@@ -86,9 +86,12 @@ export const AttendanceRecapReasonsTab: React.FC<AttendanceRecapReasonsTabProps>
     return students.filter(s => s && s.name && s.name.trim() !== '');
   }, [students]);
 
-  // Submitted / Active practice sessions
+  // Sesi latihan yang sudah terlaksana / memiliki data presensi resmi
   const sessions = useMemo(() => {
-    return attendances.filter(a => a.isSubmitted !== false);
+    return attendances.filter(a => 
+      a.isSubmitted === true || 
+      (a.records && a.records.length > 0 && a.records.some(r => Boolean(r.status)))
+    );
   }, [attendances]);
 
   const totalSessionsCount = sessions.length;

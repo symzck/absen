@@ -47,8 +47,12 @@ export const AttendancePresentationTab: React.FC<AttendancePresentationTabProps>
   }, [students]);
 
   // Submitted / Active practice sessions
+  // Hanya sesi yang sudah selesai dilaksanakan / memiliki data presensi
   const sessions = useMemo(() => {
-    return attendances.filter(a => a.isSubmitted !== false);
+    return attendances.filter(a => 
+      a.isSubmitted === true || 
+      (a.records && a.records.length > 0 && a.records.some(r => Boolean(r.status)))
+    );
   }, [attendances]);
 
   const totalSessionsCount = sessions.length;

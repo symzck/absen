@@ -76,7 +76,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
   const scheduledSessions = sortSessionsByClosest(
     isAdmin 
       ? attendances 
-      : attendances.filter(a => a.date === todayStr || a.isSubmitted !== false || a.isClosed === true || a.date <= todayStr)
+      : attendances.filter(a => a.date === todayStr || a.isSubmitted === true || (a.records && a.records.length > 0 && a.records.some(r => Boolean(r.status))) || a.isClosed === true)
   );
   const isTodayPracticeDay = attendances.some(a => a.date === todayStr);
 

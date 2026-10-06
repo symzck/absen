@@ -1734,7 +1734,10 @@ export default function App() {
   }, [students]);
 
   const submittedSessions = useMemo(() => {
-    return attendances.filter(a => a.isSubmitted !== false);
+    return attendances.filter(a => 
+      a.isSubmitted === true || 
+      (a.isSubmitted !== false && a.records && a.records.some(r => Boolean(r.status)))
+    );
   }, [attendances]);
 
   const recapData = useMemo(() => {
@@ -2637,7 +2640,7 @@ export default function App() {
       return [
         { id: 'home', label: 'Beranda Utama', icon: Home },
         { id: 'attendance', label: 'Input Presensi', icon: ClipboardList },
-        { id: 'sessions', label: 'Jadwal & Sesi Latihan', icon: Calendar, badge: attendances.length },
+        { id: 'sessions', label: 'Sesi', icon: Calendar, badge: attendances.length },
         { id: 'announcements', label: 'Papan Pengumuman', icon: Megaphone, badge: announcements.length },
         { id: 'presentation', label: 'Presentasi Kehadiran', icon: BarChart3 },
         { id: 'recap_reasons', label: 'Rekapan Kehadiran & Alasan', icon: FileSpreadsheet },
@@ -2654,7 +2657,7 @@ export default function App() {
     return [
       { id: 'home', label: 'Beranda Petugas', icon: Home },
       { id: 'attendance', label: 'Input Presensi Lapangan', icon: ClipboardList },
-      { id: 'sessions', label: 'Jadwal Sesi Hari H', icon: Calendar },
+      { id: 'sessions', label: 'Sesi', icon: Calendar },
       { id: 'announcements', label: 'Papan Pengumuman', icon: Megaphone, badge: announcements.length },
       { id: 'recap_reasons', label: 'Rekapan Kehadiran & Alasan', icon: FileSpreadsheet },
       { id: 'recap', label: 'Rekap & Leaderboard', icon: BarChart3 },
@@ -2790,7 +2793,7 @@ export default function App() {
       : [
           { id: 'home', label: 'Beranda', icon: Home },
           { id: 'attendance', label: 'Presensi', icon: ClipboardList },
-          { id: 'sessions', label: 'Jadwal', icon: Calendar },
+          { id: 'sessions', label: 'Sesi', icon: Calendar },
           { id: 'announcements', label: 'Info', icon: Megaphone, badge: announcements.length },
         ];
 
@@ -2841,10 +2844,14 @@ export default function App() {
     const isAttendanceReadOnly = !isUserAdmin && (isSessionClosed || sessionCountdown.isUpcoming);
 
     const todayDateStr = new Date().toISOString().split('T')[0];
+    // Hanya tampilkan sesi yang SUDAH (selesai/ada data) serta sesi hari ini agar tidak kebanyakan
     const selectableSessions = sortSessionsByClosest(
-      isUserAdmin 
-        ? attendances 
-        : attendances.filter(a => a.date >= todayDateStr || a.isSubmitted === true || (a.records && a.records.length > 0))
+      attendances.filter(a => 
+        a.isSubmitted === true || 
+        (a.records && a.records.length > 0 && a.records.some(r => Boolean(r.status))) || 
+        a.date === todayDateStr || 
+        a.date === selectedDate
+      )
     );
 
     return (
@@ -4030,7 +4037,13 @@ export default function App() {
               </div>
 
               <div className="divide-y divide-slate-800/80">
-                {attendances.slice(0, 5).map(session => (
+                {sortSessionsByClosest(
+                  attendances.filter(a => 
+                    a.isSubmitted === true || 
+                    (a.records && a.records.length > 0 && a.records.some(r => Boolean(r.status))) || 
+                    a.date === selectedDate
+                  )
+                ).slice(0, 5).map(session => (
                   <div key={session.id || session.date} className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                     <div>
                       <div className="font-bold text-white text-sm">
