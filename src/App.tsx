@@ -19,6 +19,8 @@ import { AnnouncementsTab } from './components/AnnouncementsTab';
 import { PaperAttendanceSheetModal } from './components/PaperAttendanceSheetModal';
 import { ScheduleSessionModal, BatchScheduleData } from './components/ScheduleSessionModal';
 import { OfficerSubmissionGuide, calculateSessionCountdown, sortSessionsByClosest } from './components/OfficerSubmissionGuide';
+import { AttendancePresentationTab } from './components/AttendancePresentationTab';
+import { AttendanceRecapReasonsTab } from './components/AttendanceRecapReasonsTab';
 import { appendSingleSessionToSheet } from './services/googleSheets';
 import { getGoogleAccessToken } from './services/googleAuth';
 import { 
@@ -100,7 +102,7 @@ export interface SystemUser {
   username: string;
   password: string;
   fullName: string;
-  role: 'admin' | 'petugas';
+  role: 'admin' | 'petugas' | 'personalia';
   assignedSection: string; // 'All' | 'Brass' | 'Cologuard' | 'Battery' | 'Pit'
   createdAt: string;
 }
@@ -116,6 +118,15 @@ const INITIAL_USERS: SystemUser[] = [
     role: 'admin',
     assignedSection: 'All',
     createdAt: '2026-09-23'
+  },
+  {
+    id: 'user-personalia',
+    username: 'personalia',
+    password: 'personalia#pgt', // Password awal personalia band
+    fullName: 'Staff Personalia Band',
+    role: 'personalia',
+    assignedSection: 'All',
+    createdAt: '2026-10-05'
   },
   {
     id: 'user-petugas-umum',
@@ -289,7 +300,16 @@ export default function App() {
   // Authentication & Users State
   const [systemUsers, setSystemUsers] = useState<SystemUser[]>(() => {
     const saved = localStorage.getItem('pgt_system_users');
-    return saved ? JSON.parse(saved) : INITIAL_USERS;
+    if (!saved) return INITIAL_USERS;
+    try {
+      const parsed: SystemUser[] = JSON.parse(saved);
+      const userMap = new Map<string, SystemUser>();
+      INITIAL_USERS.forEach(u => userMap.set(u.id, u));
+      parsed.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), ...u }));
+      return Array.from(userMap.values());
+    } catch {
+      return INITIAL_USERS;
+    }
   });
 
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(() => {
@@ -298,7 +318,7 @@ export default function App() {
   });
 
   // Navigation Tab State
-  type AppTab = 'home' | 'attendance' | 'admin_dashboard' | 'announcements' | 'sessions' | 'recap' | 'members' | 'edit_absensi' | 'google_sheets' | 'manage_users' | 'my_history';
+  type AppTab = 'home' | 'attendance' | 'admin_dashboard' | 'announcements' | 'sessions' | 'presentation' | 'recap_reasons' | 'recap' | 'members' | 'edit_absensi' | 'google_sheets' | 'manage_users' | 'my_history';
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [isPaperSheetModalOpen, setIsPaperSheetModalOpen] = useState(false);
   const [isInlineEditMode, setIsInlineEditMode] = useState(false);
@@ -430,7 +450,7 @@ export default function App() {
   const [userFormUsername, setUserFormUsername] = useState('');
   const [userFormPassword, setUserFormPassword] = useState('');
   const [userFormFullName, setUserFormFullName] = useState('');
-  const [userFormRole, setUserFormRole] = useState<'admin' | 'petugas'>('petugas');
+  const [userFormRole, setUserFormRole] = useState<'admin' | 'petugas' | 'personalia'>('petugas');
   const [userFormSection, setUserFormSection] = useState('All');
   const [showUserFormPass, setShowUserFormPass] = useState(false);
 
@@ -958,6 +978,9 @@ export default function App() {
       if (matchedUser.role === 'admin') {
         setActiveTab('home');
         triggerToast(`Selamat datang, Administrator (${matchedUser.fullName})!`);
+      } else if (matchedUser.role === 'personalia') {
+        setActiveTab('home');
+        triggerToast(`Selamat datang, Personalia Band (${matchedUser.fullName})!`);
       } else {
         setActiveTab('attendance');
         if (matchedUser.assignedSection !== 'All') {
@@ -1745,12 +1768,20 @@ export default function App() {
               wajibPresentCount++;
             }
           }
-          else if (record.status === 'Izin') izinCount++;
-          else if (record.status === 'Sakit') sakitCount++;
-          else if (record.status === 'Alfa') alfaCount++;
-
-          if (record.note && record.note.trim()) {
-            notes.push(`(${day.date}: ${record.status} - ${record.note.trim()})`);
+          else if (record.status === 'Izin') {
+            izinCount++;
+            const reason = record.note && record.note.trim() ? record.note.trim() : 'Izin';
+            notes.push(`(${day.date}: Izin - ${reason})`);
+          }
+          else if (record.status === 'Sakit') {
+            sakitCount++;
+            const reason = record.note && record.note.trim() ? record.note.trim() : 'Sakit';
+            notes.push(`(${day.date}: Sakit - ${reason})`);
+          }
+          else if (record.status === 'Alfa') {
+            alfaCount++;
+            const reason = record.note && record.note.trim() ? record.note.trim() : 'Tanpa Keterangan';
+            notes.push(`(${day.date}: Alfa - ${reason})`);
           }
         }
       });
@@ -1829,8 +1860,8 @@ export default function App() {
     
     bestMembersLeaderboard.forEach((row, index) => {
       const isWarning = row.wajibPercentage < 80 ? "Perlu Pembinaan (<80%)" : "Disiplin Baik (>=80%)";
-      const cleanNote = row.notes.replace(/,/g, ';'); 
-      const rowData = `${index + 1},${row.name},${row.kelas},${row.asrama},${row.section},${row.wajibPresentCount}/${row.totalWajibDays},${row.wajibPercentage}%,${row.sunnahPresentCount} Sesi (+${row.sunnahBonusPoints} Poin),${row.totalScore} Poin,${isWarning},${cleanNote}`;
+      const cleanNote = (row.notes || 'Tidak ada catatan').replace(/"/g, '""'); 
+      const rowData = `${index + 1},"${row.name}",${row.kelas},${row.asrama},${row.section},${row.wajibPresentCount}/${row.totalWajibDays},${row.wajibPercentage}%,${row.sunnahPresentCount} Sesi (+${row.sunnahBonusPoints} Poin),${row.totalScore} Poin,"${isWarning}","${cleanNote}"`;
       csvContent += rowData + "\n";
     });
 
@@ -2471,10 +2502,11 @@ export default function App() {
                 </label>
                 <select 
                   value={userFormRole}
-                  onChange={(e) => setUserFormRole(e.target.value as 'admin' | 'petugas')}
+                  onChange={(e) => setUserFormRole(e.target.value as 'admin' | 'petugas' | 'personalia')}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="petugas">Petugas Lapangan (Hanya Buka Presensi)</option>
+                  <option value="petugas">Petugas Lapangan (Input Presensi & Sesi Hari H)</option>
+                  <option value="personalia">Personalia Band (Homepage, Pengumuman, Presentasi, Rekap Alasan)</option>
                   <option value="admin">Administrator (Akses Penuh Master)</option>
                 </select>
               </div>
@@ -2590,19 +2622,46 @@ export default function App() {
 
   // --- UNIFIED PORTAL COMPONENTS ---
   const menuItems = useMemo(() => {
+    // 1. Khusus Hak Akses Personalia Band (Sesuai Permintaan Spesifik: 1 Homepage, 2 Pengumuman, 3 Presentasi Kehadiran, 4 Rekapan Kehadiran Beserta Alasannya)
+    if (currentUser?.role === 'personalia') {
+      return [
+        { id: 'home', label: 'Homepage Personalia', icon: Home },
+        { id: 'announcements', label: 'Papan Pengumuman', icon: Megaphone, badge: announcements.length },
+        { id: 'presentation', label: 'Presentasi Kehadiran', icon: BarChart3 },
+        { id: 'recap_reasons', label: 'Rekapan Kehadiran & Alasan', icon: FileSpreadsheet },
+      ];
+    }
+
+    // 2. Hak Akses Administrator Master (Akses Lengkap Semua Fitur)
+    if (currentUser?.role === 'admin') {
+      return [
+        { id: 'home', label: 'Beranda Utama', icon: Home },
+        { id: 'attendance', label: 'Input Presensi', icon: ClipboardList },
+        { id: 'sessions', label: 'Jadwal & Sesi Latihan', icon: Calendar, badge: attendances.length },
+        { id: 'announcements', label: 'Papan Pengumuman', icon: Megaphone, badge: announcements.length },
+        { id: 'presentation', label: 'Presentasi Kehadiran', icon: BarChart3 },
+        { id: 'recap_reasons', label: 'Rekapan Kehadiran & Alasan', icon: FileSpreadsheet },
+        { id: 'recap', label: 'Rekap & Leaderboard', icon: Trophy },
+        { id: 'members', label: 'Database Pemain', icon: Users, badge: students.length },
+        { id: 'edit_absensi', label: 'Monitoring Riwayat Sesi', icon: Edit3 },
+        { id: 'google_sheets', label: 'Google Sheets Sync', icon: FileSpreadsheet },
+        { id: 'manage_users', label: 'Kelola & Kontak Petugas', icon: UserCheck, badge: systemUsers.length },
+        { id: 'my_history', label: 'Ringkasan & Log Saya', icon: Clock },
+      ];
+    }
+
+    // 3. Hak Akses Petugas Lapangan
     return [
-      { id: 'home', label: 'Beranda Utama', icon: Home },
-      { id: 'attendance', label: 'Input Presensi', icon: ClipboardList },
-      { id: 'sessions', label: 'Jadwal & Sesi Latihan', icon: Calendar, badge: attendances.length },
+      { id: 'home', label: 'Beranda Petugas', icon: Home },
+      { id: 'attendance', label: 'Input Presensi Lapangan', icon: ClipboardList },
+      { id: 'sessions', label: 'Jadwal Sesi Hari H', icon: Calendar },
       { id: 'announcements', label: 'Papan Pengumuman', icon: Megaphone, badge: announcements.length },
+      { id: 'recap_reasons', label: 'Rekapan Kehadiran & Alasan', icon: FileSpreadsheet },
       { id: 'recap', label: 'Rekap & Leaderboard', icon: BarChart3 },
       { id: 'members', label: 'Database Pemain', icon: Users, badge: students.length },
-      { id: 'edit_absensi', label: 'Monitoring Riwayat Sesi', icon: Edit3 },
-      { id: 'google_sheets', label: 'Google Sheets Sync', icon: FileSpreadsheet },
-      { id: 'manage_users', label: 'Kelola & Kontak Petugas', icon: UserCheck, badge: systemUsers.length },
       { id: 'my_history', label: 'Ringkasan & Log Saya', icon: Clock },
     ];
-  }, [announcements.length, students.length, attendances.length, systemUsers.length]);
+  }, [currentUser?.role, announcements.length, students.length, attendances.length, systemUsers.length]);
 
   const SidebarItem = ({ item }: { item: any }) => {
     const Icon = item.icon;
@@ -2639,8 +2698,14 @@ export default function App() {
         <div>
           <h2 className="text-base font-extrabold text-white leading-tight">PGT MU'ALLIMIN</h2>
           <div className="mt-1">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${currentUser?.role === 'admin' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'}`}>
-              {currentUser?.role === 'admin' ? 'SUPER ADMINISTRATOR' : 'PORTAL PETUGAS'}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+              currentUser?.role === 'admin' 
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' 
+                : currentUser?.role === 'personalia'
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+            }`}>
+              {currentUser?.role === 'admin' ? 'SUPER ADMINISTRATOR' : currentUser?.role === 'personalia' ? 'PERSONALIA BAND' : 'PORTAL PETUGAS'}
             </span>
           </div>
         </div>
@@ -2672,7 +2737,7 @@ export default function App() {
 
       <div className="p-4 border-t border-slate-800 bg-slate-950/60">
         <div className="flex items-center justify-between mb-3 px-1 text-[11px] text-slate-400">
-          <span className="truncate">User: <strong className={currentUser?.role === 'admin' ? 'text-amber-300' : 'text-purple-300'}>{currentUser?.fullName}</strong></span>
+          <span className="truncate">User: <strong className={currentUser?.role === 'admin' ? 'text-amber-300' : currentUser?.role === 'personalia' ? 'text-sky-300' : 'text-purple-300'}>{currentUser?.fullName}</strong></span>
           {currentUser?.assignedSection !== 'All' && <span className="text-amber-400 font-bold ml-1">{currentUser?.assignedSection}</span>}
         </div>
         <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-2 text-xs text-red-300 bg-red-950/30 hover:bg-red-900/50 rounded-xl border border-red-800/40 transition-colors font-semibold cursor-pointer"><LogOut size={15} /> Keluar Sistem</button>
@@ -2693,8 +2758,14 @@ export default function App() {
             <div className="text-[10px] sm:text-[11px] text-amber-400 font-semibold flex items-center gap-1.5 truncate">
               <span className="text-purple-300 capitalize truncate">{currentTabItem?.label || activeTab}</span>
               <span className="text-slate-500 shrink-0">·</span>
-              <span className="text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border bg-purple-950/80 text-purple-300 border-purple-700/50 shrink-0">
-                {currentUser?.role === 'admin' ? 'Admin' : 'Petugas'}
+              <span className={`text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded font-bold uppercase border shrink-0 ${
+                currentUser?.role === 'admin'
+                  ? 'bg-amber-950/80 text-amber-300 border-amber-700/50'
+                  : currentUser?.role === 'personalia'
+                  ? 'bg-sky-950/80 text-sky-300 border-sky-700/50'
+                  : 'bg-purple-950/80 text-purple-300 border-purple-700/50'
+              }`}>
+                {currentUser?.role === 'admin' ? 'Admin' : currentUser?.role === 'personalia' ? 'Personalia' : 'Petugas'}
               </span>
             </div>
           </div>
@@ -2709,12 +2780,19 @@ export default function App() {
   };
 
   const MobileBottomBar = () => {
-    const bottomNavItems = [
-      { id: 'home', label: 'Beranda', icon: Home },
-      { id: 'attendance', label: 'Presensi', icon: ClipboardList },
-      { id: 'sessions', label: 'Jadwal', icon: Calendar },
-      { id: 'announcements', label: 'Info', icon: Megaphone, badge: announcements.length },
-    ];
+    const bottomNavItems = currentUser?.role === 'personalia'
+      ? [
+          { id: 'home', label: 'Homepage', icon: Home },
+          { id: 'announcements', label: 'Pengumuman', icon: Megaphone, badge: announcements.length },
+          { id: 'presentation', label: 'Presentasi', icon: BarChart3 },
+          { id: 'recap_reasons', label: 'Rekap Alasan', icon: FileSpreadsheet },
+        ]
+      : [
+          { id: 'home', label: 'Beranda', icon: Home },
+          { id: 'attendance', label: 'Presensi', icon: ClipboardList },
+          { id: 'sessions', label: 'Jadwal', icon: Calendar },
+          { id: 'announcements', label: 'Info', icon: Megaphone, badge: announcements.length },
+        ];
 
     return (
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 px-2 py-1.5 shadow-2xl flex items-center justify-around">
@@ -2766,7 +2844,7 @@ export default function App() {
     const selectableSessions = sortSessionsByClosest(
       isUserAdmin 
         ? attendances 
-        : attendances.filter(a => a.date === todayDateStr)
+        : attendances.filter(a => a.date >= todayDateStr || a.isSubmitted === true || (a.records && a.records.length > 0))
     );
 
     return (
@@ -2806,12 +2884,22 @@ export default function App() {
                       const matched = attendances.find(a => a.date === e.target.value);
                       if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
                     }}
-                    className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[150px] sm:max-w-[200px] truncate"
+                    className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[160px] sm:max-w-[220px] truncate"
                   >
-                    <option value={selectedDate} className="bg-slate-900 text-white">📅 {selectedDate} ({currentAttendanceSession?.sessionName || 'Latihan Rutin'})</option>
-                    {selectableSessions.filter(a => a.date !== selectedDate).map(a => (
-                      <option key={a.date} value={a.date} className="bg-slate-900 text-white">📅 {a.date} - {a.sessionName || 'Latihan Rutin'}</option>
-                    ))}
+                    {!selectableSessions.some(a => a.date === selectedDate) && (
+                      <option value={selectedDate} className="bg-slate-900 text-white">
+                        📅 {selectedDate} ({currentAttendanceSession?.sessionName || 'Latihan Rutin'})
+                      </option>
+                    )}
+                    {selectableSessions.map(a => {
+                      const isToday = a.date === todayDateStr;
+                      const isFinished = a.isSubmitted === true;
+                      return (
+                        <option key={a.date} value={a.date} className="bg-slate-900 text-white">
+                          {isToday ? '🔥 (Hari Ini) ' : isFinished ? '✅ (Selesai) ' : '📅 '} {a.date} - {a.sessionName || 'Latihan Rutin'}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
@@ -3150,6 +3238,28 @@ export default function App() {
           />
         );
 
+      case 'presentation':
+        return (
+          <AttendancePresentationTab
+            currentUser={currentUser}
+            students={activeStudents}
+            attendances={attendances}
+            onNavigateTab={(tab) => changeTab(tab as AppTab)}
+            triggerToast={triggerToast}
+          />
+        );
+
+      case 'recap_reasons':
+        return (
+          <AttendanceRecapReasonsTab
+            currentUser={currentUser}
+            students={activeStudents}
+            attendances={attendances}
+            onNavigateTab={(tab) => changeTab(tab as AppTab)}
+            triggerToast={triggerToast}
+          />
+        );
+
       case 'recap': {
         const wajibSessionsCount = submittedSessions.filter(s => (s.sessionType || 'wajib') !== 'sunnah' && !s.sessionName?.toLowerCase().includes('sunnah')).length;
         const sunnahSessionsCount = submittedSessions.filter(s => s.sessionType === 'sunnah' || s.sessionName?.toLowerCase().includes('sunnah')).length;
@@ -3189,7 +3299,14 @@ export default function App() {
                     Dihitung dari <strong>{submittedSessions.length} sesi terfinalisasi</strong> ({wajibSessionsCount} Sesi Wajib · {sunnahSessionsCount} Sesi Sunnah Berpoin Bonus).
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button 
+                    onClick={() => changeTab('recap_reasons')} 
+                    className="px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-blue-950/40 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <FileSpreadsheet size={15} /> 
+                    <span>Rekapan Alasan Lengkap</span>
+                  </button>
                   <button 
                     onClick={exportToExcel} 
                     className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer active:scale-95 transition-all"
@@ -3602,8 +3719,13 @@ export default function App() {
                                 Kls {student.kelas || '-'} · Asrama {student.asrama || '-'}
                               </div>
                               {student.notes && student.notes !== 'Tidak ada catatan' && (
-                                <div className="text-[10px] text-amber-300/80 mt-1 line-clamp-2 md:hidden" title={student.notes}>
-                                  📝 {student.notes}
+                                <div className="text-[10px] text-amber-300/90 mt-1.5 p-1.5 rounded-lg bg-slate-950/90 border border-slate-800 md:hidden" title={student.notes}>
+                                  <div className="font-semibold text-amber-400 flex items-center gap-1 mb-0.5">
+                                    <FileText size={10} /> Catatan / Alasan:
+                                  </div>
+                                  <div className="break-words font-mono text-[9.5px] leading-relaxed text-slate-300">
+                                    {student.notes}
+                                  </div>
                                 </div>
                               )}
                             </td>
@@ -3949,7 +4071,7 @@ export default function App() {
     <header className="hidden md:flex items-center justify-between px-8 py-4 bg-slate-900/60 border-b border-slate-800 sticky top-0 z-20 backdrop-blur-md">
       <div className="flex items-center gap-3">
         <div className="text-xs text-slate-400 font-medium">
-          <span className="text-purple-400 font-bold uppercase tracking-wide">{currentUser?.role === 'admin' ? 'Admin Portal' : 'Petugas Portal'}</span>
+          <span className="text-purple-400 font-bold uppercase tracking-wide">{currentUser?.role === 'admin' ? 'Admin Portal' : currentUser?.role === 'personalia' ? 'Personalia Portal' : 'Petugas Portal'}</span>
           <span className="mx-2">/</span>
           <span className="text-slate-200 font-semibold capitalize">{activeTab === 'home' ? 'Beranda' : activeTab.replace('_', ' ')}</span>
         </div>
@@ -4004,7 +4126,7 @@ export default function App() {
                 PGT MU'ALLIMIN
               </h1>
               <p className="text-slate-400 text-xs mt-1">
-                Portal Presensi Terpadu · Jalur Masuk Petugas & Administrator
+                Portal Presensi Terpadu · Jalur Masuk Petugas, Personalia Band & Administrator
               </p>
             </div>
           </div>
@@ -4030,7 +4152,7 @@ export default function App() {
                     required 
                     autoComplete="username"
                     className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700/80 text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                    placeholder="Ketik username Anda" 
+                    placeholder="Ketik username Anda (cth: personalia, admin, petugas)" 
                   />
                 </div>
               </div>
@@ -4062,17 +4184,13 @@ export default function App() {
               <div className="pt-2">
                 <button 
                   type="submit" 
-                  className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 shadow-lg shadow-purple-950/40 transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2"
+                  className="w-full py-3.5 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-purple-700 via-purple-600 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 shadow-lg shadow-purple-950/40 transition-all duration-200 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <Lock size={15} />
                   <span>Masuk ke Sistem</span>
                 </button>
               </div>
             </form>
-
-            <div className="mt-5 pt-4 border-t border-slate-800/80 text-center text-slate-500 text-[11px]">
-              Sistem mengenali hak akses Anda secara otomatis (Petugas atau Administrator) berdasarkan akun yang Anda masukkan.
-            </div>
           </div>
 
           {/* GitHub Domain & Repository Footer */}

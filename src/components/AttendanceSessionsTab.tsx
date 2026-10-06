@@ -83,9 +83,9 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
   // Available sessions:
   // Admin: melihat semua sesi untuk pengelolaan & arsip
-  // Selain Admin (Petugas/Member): HANYA ditunjukkan ketika Hari H (session.date === todayStr)
+  // Petugas: melihat sesi terdekat (Hari H / Jadwal Mendatang) serta sesi yang telah selesai
   const availableSessions = sortSessionsByClosest(
-    isAdmin ? sessions : sessions.filter(s => s.date === todayStr)
+    isAdmin ? sessions : sessions.filter(s => s.date >= todayStr || s.isSubmitted === true || (s.records && s.records.length > 0))
   );
 
   // Filter sessions based on tab & query
