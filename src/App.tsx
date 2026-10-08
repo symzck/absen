@@ -1175,20 +1175,7 @@ export default function App() {
 
   // Attendance Handlers
   const handleSaveAttendance = (studentId: number, status: string, note: string) => {
-    // Non-admin check: locked / expired closed session or upcoming countdown
-    if (currentUser?.role !== 'admin') {
-      const existingSession = attendances.find(a => a.date === selectedDate);
-      if (existingSession?.isClosed) {
-        triggerToast('Presensi terkunci. Sesi telah ditutup & hanya Administrator yang dapat mengubah data.', 'warning');
-        return;
-      }
-      const countdown = calculateSessionCountdown(selectedDate, existingSession?.scheduledTime);
-      if (countdown.isUpcoming) {
-        triggerToast(`Presensi belum dibuka. Sesi dimulai dalam ${countdown.formatted}.`, 'warning');
-        return;
-      }
-    }
-
+    // Pengeditan absensi tetap berfungsi penuh meskipun sesi sudah habis / ditutup (koreksi & susulan presensi)
     setAttendances(prev => {
       const dateIndex = prev.findIndex(a => a.date === selectedDate);
       let sessionObj: DailyAttendance;
@@ -1237,20 +1224,7 @@ export default function App() {
   };
 
   const handleMarkAllPresent = () => {
-    // Non-admin check: locked / expired closed session or upcoming countdown
-    if (currentUser?.role !== 'admin') {
-      const existingSession = attendances.find(a => a.date === selectedDate);
-      if (existingSession?.isClosed) {
-        triggerToast('Presensi terkunci. Sesi telah ditutup & hanya Administrator yang dapat mengubah data.', 'warning');
-        return;
-      }
-      const countdown = calculateSessionCountdown(selectedDate, existingSession?.scheduledTime);
-      if (countdown.isUpcoming) {
-        triggerToast(`Presensi belum dibuka. Sesi dimulai dalam ${countdown.formatted}.`, 'warning');
-        return;
-      }
-    }
-
+    // Pengeditan absensi tetap berfungsi penuh bahkan ketika sesi sudah habis / ditutup
     setAttendances(prev => {
       const dateIndex = prev.findIndex(a => a.date === selectedDate);
       let sessionObj: DailyAttendance;
@@ -2857,7 +2831,8 @@ export default function App() {
     const currentAttendanceSession = attendances.find(a => a.date === selectedDate);
     const isSessionClosed = Boolean(currentAttendanceSession?.isClosed);
     const sessionCountdown = calculateSessionCountdown(selectedDate, currentAttendanceSession?.scheduledTime);
-    const isAttendanceReadOnly = !isUserAdmin && (isSessionClosed || sessionCountdown.isUpcoming);
+    // Editing presensi diaktifkan penuh meskipun sesi sudah habis / selesai / ditutup (koreksi & susulan data)
+    const isAttendanceReadOnly = false;
 
     const todayDateStr = new Date().toISOString().split('T')[0];
     // Hanya tampilkan sesi yang SUDAH (selesai/ada data) serta sesi hari ini agar tidak kebanyakan
@@ -2871,34 +2846,38 @@ export default function App() {
     );
 
     return (
-      <div className="space-y-6">
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl relative overflow-hidden">
+      <div className="space-y-6 w-full max-w-full">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl relative overflow-hidden">
           <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-extrabold text-white">Presensi Anggota Latihan</h2>
                 {isSessionClosed ? (
-                  <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-bold flex items-center gap-1">
-                    <Lock size={10} className="text-amber-400" /> Terkunci
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1">
+                    <CheckCircle2 size={11} className="text-emerald-400" /> Selesai (Mode Edit Aktif)
                   </span>
                 ) : sessionCountdown.isUpcoming ? (
                   <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1">
                     <Timer size={10} /> Menunggu Mulai
                   </span>
-                ) : null}
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-bold flex items-center gap-1">
+                    <Clock size={10} /> Sesi Terbuka
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-1">
-                {isAttendanceReadOnly
-                  ? isSessionClosed
-                    ? 'Sesi ini telah ditutup & terkunci. Hanya Administrator yang dapat mengubah data.'
-                    : `Sesi belum dimulai (Countdown: ${sessionCountdown.formatted}). Presensi dibuka saat sesi dimulai.`
+                {isSessionClosed
+                  ? 'Sesi ini telah selesai/lewat tanggal, namun fungsi editing presensi tetap aktif untuk koreksi data dan absensi susulan.'
+                  : sessionCountdown.isUpcoming
+                  ? `Sesi belum dimulai (${sessionCountdown.formatted}). Presensi dapat diisi atau diperbarui kapan saja.`
                   : 'Tentukan status kehadiran pemain dan simpan perubahan secara otomatis ke cloud.'}
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
               {selectableSessions.length > 0 && (
-                <div className="flex items-center bg-slate-950 border border-purple-800/80 rounded-xl px-3 py-2 text-xs">
+                <div className="flex items-center bg-slate-950 border border-purple-800/80 rounded-xl px-2.5 sm:px-3 py-2 text-xs max-w-full">
                   <Calendar size={14} className="text-amber-400 mr-2 shrink-0" />
                   <select 
                     value={selectedDate}
@@ -2907,7 +2886,7 @@ export default function App() {
                       const matched = attendances.find(a => a.date === e.target.value);
                       if (matched?.sessionName) setCurrentSessionName(matched.sessionName);
                     }}
-                    className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[160px] sm:max-w-[220px] truncate"
+                    className="bg-transparent text-amber-300 font-bold focus:outline-none cursor-pointer max-w-[150px] xs:max-w-[200px] sm:max-w-[240px] truncate"
                   >
                     {!selectableSessions.some(a => a.date === selectedDate) && (
                       <option value={selectedDate} className="bg-slate-900 text-white">
@@ -2928,14 +2907,14 @@ export default function App() {
               )}
 
               {isUserAdmin ? (
-                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                  <span className="text-slate-400 mr-2 font-medium">Tanggal:</span>
-                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer" />
+                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-2 text-xs">
+                  <span className="text-slate-400 mr-2 font-medium hidden xs:inline">Tanggal:</span>
+                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer text-xs" />
                 </div>
               ) : (
-                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs">
-                  <Calendar size={13} className="text-purple-400 mr-2" />
-                  <span className="text-slate-300 font-bold">{selectedDate} <span className="text-[10px] text-amber-400 font-medium">(Hari H)</span></span>
+                <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-2 text-xs">
+                  <Calendar size={13} className="text-purple-400 mr-1.5" />
+                  <span className="text-slate-300 font-bold text-xs">{selectedDate}</span>
                 </div>
               )}
 
@@ -2943,23 +2922,23 @@ export default function App() {
                 value={selectedSection}
                 onChange={(e) => setSelectedSection(e.target.value)}
                 disabled={currentUser?.assignedSection !== 'All'}
-                className="bg-slate-950 text-white border border-slate-700/80 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none cursor-pointer disabled:opacity-50"
+                className="bg-slate-950 text-white border border-slate-700/80 rounded-xl px-2.5 sm:px-3 py-2 text-xs font-semibold focus:outline-none cursor-pointer disabled:opacity-50"
               >
                 {sections.map(sec => <option key={sec} value={sec}>{sec === 'All' ? 'Semua Section' : `Sec: ${sec}`}</option>)}
               </select>
 
               <button 
-                type="button" disabled={isAttendanceReadOnly}
-                onClick={() => !isAttendanceReadOnly && setIsPaperSheetModalOpen(true)}
-                className={`px-3.5 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all ${isAttendanceReadOnly ? 'bg-slate-800 text-slate-500 opacity-60 border border-slate-700' : 'bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white active:scale-95 cursor-pointer'}`}
+                type="button"
+                onClick={() => setIsPaperSheetModalOpen(true)}
+                className="px-3 sm:px-3.5 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all bg-gradient-to-r from-purple-800 to-indigo-800 hover:from-purple-700 hover:to-indigo-700 text-white active:scale-95 cursor-pointer shrink-0"
               >
-                <ClipboardList size={14} className={isAttendanceReadOnly ? "text-slate-500" : "text-amber-400"} /> <span>Presensi Kertas</span>
+                <ClipboardList size={14} className="text-amber-400" /> <span>Presensi Kertas</span>
               </button>
 
               <button 
-                type="button" disabled={isAttendanceReadOnly}
-                onClick={() => !isAttendanceReadOnly && handleMarkAllPresent()}
-                className={`px-4 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all ${isAttendanceReadOnly ? 'bg-slate-800 text-slate-500 opacity-60 border border-slate-700' : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer'}`}
+                type="button"
+                onClick={() => handleMarkAllPresent()}
+                className="px-3 sm:px-4 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer shrink-0"
               >
                 <CheckSquare size={15} /> <span>Hadir Semua</span>
               </button>
@@ -3396,84 +3375,107 @@ export default function App() {
 
               {/* PODIUM TOP 3 PLAYERS */}
               {bestMembersLeaderboard.length >= 3 ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10 pt-2">
-                  {/* JUARA 2 (PERAK) */}
-                  {top2 && (
-                    <div className="order-2 md:order-1 p-5 rounded-3xl bg-slate-950/90 border border-slate-600/60 shadow-xl flex flex-col justify-between space-y-4 hover:border-slate-400 transition-all">
-                      <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4 relative z-10 pt-1">
+                  {/* JUARA 1 (EMAS - CHAMPION) */}
+                  {top1 && (
+                    <div className="order-1 md:order-2 p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-gradient-to-b from-amber-950/40 via-slate-950 to-slate-950 border border-amber-500/50 shadow-xl shadow-amber-950/30 flex flex-col justify-between space-y-4 relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="space-y-3 relative z-10">
                         <div className="flex items-center justify-between">
-                          <span className="w-9 h-9 rounded-2xl bg-slate-800 border border-slate-600 text-slate-200 font-black text-sm flex items-center justify-center shadow">
-                            🥈 #2
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-400/40 font-black text-xs shadow-sm">
+                            <Crown size={14} className="text-amber-400" /> Juara 1 · Teladan Emas
                           </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
-                            Peringkat 2
+                          <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black text-xs flex items-center justify-center shadow-md">
+                            #1
                           </span>
                         </div>
                         <div>
-                          <div className="font-black text-lg text-white line-clamp-1">{top2.name}</div>
-                          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                          <div className="font-black text-lg sm:text-xl text-white tracking-tight break-words">{top1.name}</div>
+                          <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold border border-amber-400/40 text-[10px]">
+                              {top1.section}
+                            </span>
+                            <span className="text-slate-400">Kls {top1.kelas} · Asr {top1.asrama}</span>
+                          </div>
+                        </div>
+
+                        {/* Wajib Attendance Bar */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex justify-between text-[11px] text-slate-300">
+                            <span>Kehadiran Wajib:</span>
+                            <span className="font-bold text-amber-300">{top1.wajibPercentage}% ({top1.wajibPresentCount}/{top1.totalWajibDays})</span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(top1.wajibPercentage, 100)}%` }}></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between relative z-10">
+                        <div>
+                          {top1.sunnahPresentCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/40 px-2 py-0.5 rounded-lg border border-amber-800/40">
+                              <Star size={11} className="fill-amber-400 text-amber-400" /> +{top1.sunnahBonusPoints} Pts ({top1.sunnahPresentCount} Sunnah)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">0 Sesi Sunnah</span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase">Total Skor</div>
+                          <div className="text-xl sm:text-2xl font-black text-amber-300 tabular-nums">{top1.totalScore} Pts</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* JUARA 2 (PERAK) */}
+                  {top2 && (
+                    <div className="order-2 md:order-1 p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-slate-950/90 border border-slate-700/70 shadow-lg flex flex-col justify-between space-y-4 hover:border-slate-500 transition-all">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800/90 text-slate-200 border border-slate-600/50 font-bold text-xs shadow-sm">
+                            🥈 Juara 2 · Teladan Perak
+                          </span>
+                          <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-600 text-slate-200 font-black text-xs flex items-center justify-center shadow">
+                            #2
+                          </span>
+                        </div>
+                        <div>
+                          <div className="font-black text-base sm:text-lg text-white tracking-tight break-words">{top2.name}</div>
+                          <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
                             <span className="px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 font-bold border border-purple-800/60 text-[10px]">
                               {top2.section}
                             </span>
                             <span>Kls {top2.kelas} · Asr {top2.asrama}</span>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
-                        <div className="flex justify-between items-baseline">
-                          <span className="text-xs text-slate-400">Skor Prestasi:</span>
-                          <span className="text-xl font-black text-slate-200">{top2.totalScore} Pts</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                          <span>Wajib: {top2.wajibPercentage}% ({top2.wajibPresentCount}/{top2.totalWajibDays})</span>
-                          {top2.sunnahPresentCount > 0 ? (
-                            <span className="font-bold text-amber-300 flex items-center gap-1">
-                              <Star size={11} className="fill-amber-400 text-amber-400" />
-                              {top2.sunnahPresentCount} Sunnah (+{top2.sunnahBonusPoints})
-                            </span>
-                          ) : (
-                            <span className="text-slate-600">0 Sunnah</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* JUARA 1 (EMAS - HIGHLIGHTED) */}
-                  {top1 && (
-                    <div className="order-1 md:order-2 p-6 rounded-3xl bg-gradient-to-b from-amber-950/60 via-slate-950 to-slate-950 border-2 border-amber-400 shadow-2xl shadow-amber-500/20 flex flex-col justify-between space-y-4 ring-4 ring-amber-400/10 md:-mt-2">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-500 text-slate-950 font-black text-lg flex items-center justify-center shadow-lg shadow-amber-500/30">
-                            🥇 #1
-                          </span>
-                          <span className="text-xs font-black px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 flex items-center gap-1 shadow-md">
-                            <Crown size={14} className="text-slate-950 fill-slate-950" /> Bintang Utama
-                          </span>
-                        </div>
-                        <div>
-                          <div className="font-black text-xl text-white line-clamp-1">{top1.name}</div>
-                          <div className="text-xs text-slate-300 mt-1 flex items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold border border-amber-400/50 text-[11px]">
-                              {top1.section}
-                            </span>
-                            <span>Kls {top1.kelas} · Asrama {top1.asrama}</span>
+                        {/* Wajib Attendance Bar */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex justify-between text-[11px] text-slate-400">
+                            <span>Kehadiran Wajib:</span>
+                            <span className="font-bold text-slate-200">{top2.wajibPercentage}% ({top2.wajibPresentCount}/{top2.totalWajibDays})</span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                            <div className="h-full bg-slate-400 rounded-full transition-all duration-500" style={{ width: `${Math.min(top2.wajibPercentage, 100)}%` }}></div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="pt-3 border-t border-amber-500/30 space-y-2">
-                        <div className="flex justify-between items-baseline">
-                          <span className="text-xs text-amber-200/80 font-bold">Total Skor Teladan:</span>
-                          <span className="text-2xl font-black text-amber-300">{top1.totalScore} Pts</span>
+                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                        <div>
+                          {top2.sunnahPresentCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/30 px-2 py-0.5 rounded-lg border border-amber-900/30">
+                              <Star size={11} className="fill-amber-400 text-amber-400" /> +{top2.sunnahBonusPoints} Pts ({top2.sunnahPresentCount} Sunnah)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-500">0 Sesi Sunnah</span>
+                          )}
                         </div>
-                        <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between text-amber-200">
-                          <span>Wajib: <strong>{top1.wajibPercentage}%</strong> ({top1.wajibPresentCount}/{top1.totalWajibDays})</span>
-                          <span className="font-black text-amber-300 flex items-center gap-1">
-                            <Sparkles size={12} className="text-amber-400" />
-                            {top1.sunnahPresentCount} Sesi Sunnah (+{top1.sunnahBonusPoints} Pts)
-                          </span>
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase">Total Skor</div>
+                          <div className="text-xl sm:text-2xl font-black text-slate-200 tabular-nums">{top2.totalScore} Pts</div>
                         </div>
                       </div>
                     </div>
@@ -3481,42 +3483,51 @@ export default function App() {
 
                   {/* JUARA 3 (PERUNGGU) */}
                   {top3 && (
-                    <div className="order-3 p-5 rounded-3xl bg-slate-950/90 border border-amber-700/60 shadow-xl flex flex-col justify-between space-y-4 hover:border-amber-600 transition-all">
+                    <div className="order-3 p-5 sm:p-6 rounded-2xl sm:rounded-3xl bg-slate-950/90 border border-amber-900/50 shadow-lg flex flex-col justify-between space-y-4 hover:border-amber-700 transition-all">
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="w-9 h-9 rounded-2xl bg-amber-950/80 border border-amber-700 text-amber-300 font-black text-sm flex items-center justify-center shadow">
-                            🥉 #3
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-950/50 text-amber-400 border border-amber-800/50 font-bold text-xs shadow-sm">
+                            🥉 Juara 3 · Teladan Perunggu
                           </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/60 text-amber-300 border border-amber-800">
-                            Peringkat 3
+                          <span className="w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-800 text-amber-300 font-black text-xs flex items-center justify-center shadow">
+                            #3
                           </span>
                         </div>
                         <div>
-                          <div className="font-black text-lg text-white line-clamp-1">{top3.name}</div>
-                          <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                          <div className="font-black text-base sm:text-lg text-white tracking-tight break-words">{top3.name}</div>
+                          <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-1.5">
                             <span className="px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 font-bold border border-purple-800/60 text-[10px]">
                               {top3.section}
                             </span>
                             <span>Kls {top3.kelas} · Asr {top3.asrama}</span>
                           </div>
                         </div>
+
+                        {/* Wajib Attendance Bar */}
+                        <div className="space-y-1.5 pt-1">
+                          <div className="flex justify-between text-[11px] text-slate-400">
+                            <span>Kehadiran Wajib:</span>
+                            <span className="font-bold text-amber-300">{top3.wajibPercentage}% ({top3.wajibPresentCount}/{top3.totalWajibDays})</span>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-900 border border-slate-800 overflow-hidden">
+                            <div className="h-full bg-amber-600 rounded-full transition-all duration-500" style={{ width: `${Math.min(top3.wajibPercentage, 100)}%` }}></div>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
-                        <div className="flex justify-between items-baseline">
-                          <span className="text-xs text-slate-400">Skor Prestasi:</span>
-                          <span className="text-xl font-black text-amber-400">{top3.totalScore} Pts</span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                          <span>Wajib: {top3.wajibPercentage}% ({top3.wajibPresentCount}/{top3.totalWajibDays})</span>
+                      <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                        <div>
                           {top3.sunnahPresentCount > 0 ? (
-                            <span className="font-bold text-amber-300 flex items-center gap-1">
-                              <Star size={11} className="fill-amber-400 text-amber-400" />
-                              {top3.sunnahPresentCount} Sunnah (+{top3.sunnahBonusPoints})
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-950/30 px-2 py-0.5 rounded-lg border border-amber-900/30">
+                              <Star size={11} className="fill-amber-400 text-amber-400" /> +{top3.sunnahBonusPoints} Pts ({top3.sunnahPresentCount} Sunnah)
                             </span>
                           ) : (
-                            <span className="text-slate-600">0 Sunnah</span>
+                            <span className="text-[11px] text-slate-500">0 Sesi Sunnah</span>
                           )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[10px] text-slate-400 font-semibold uppercase">Total Skor</div>
+                          <div className="text-xl sm:text-2xl font-black text-amber-400 tabular-nums">{top3.totalScore} Pts</div>
                         </div>
                       </div>
                     </div>
@@ -3528,33 +3539,48 @@ export default function App() {
                 </div>
               )}
 
-              {/* TOP 4 - 10 MEMBERS (GRID) */}
+              {/* TOP 4 - 10 MEMBERS (LIST TABEL ELEGAN) */}
               {topRest.length > 0 && (
-                <div className="space-y-2.5 pt-2">
+                <div className="space-y-3 pt-2">
                   <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Award size={14} className="text-purple-400" /> Peringkat 4 Sampai 10 Besar:
+                    <Award size={14} className="text-purple-400" /> Peringkat 4 Sampai 10 Besar Korps:
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  <div className="bg-slate-950/70 border border-slate-800/80 rounded-2xl divide-y divide-slate-800/70 overflow-hidden">
                     {topRest.map((m, idx) => (
-                      <div key={m.id} className="p-3 bg-slate-950/80 border border-slate-800 hover:border-purple-600/40 rounded-2xl flex items-center justify-between gap-2 shadow-sm">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
+                      <div key={m.id} className="p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:bg-slate-900/50 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <span className="w-7 h-7 rounded-xl bg-slate-900 border border-slate-700/80 text-slate-300 font-mono font-bold text-xs flex items-center justify-center shrink-0">
                             #{idx + 4}
                           </span>
-                          <div className="min-w-0">
-                            <div className="font-bold text-xs text-white truncate">{m.name}</div>
-                            <div className="text-[10px] text-purple-300">{m.section} · Kls {m.kelas}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-xs sm:text-sm text-white truncate">{m.name}</div>
+                            <div className="text-[10px] sm:text-xs text-slate-400 flex items-center gap-1.5 truncate">
+                              <span className="text-purple-300 font-semibold">{m.section}</span>
+                              <span>·</span>
+                              <span>Kls {m.kelas}</span>
+                              <span className="hidden xs:inline">· Asrama {m.asrama}</span>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-xs font-black text-amber-300">{m.totalScore} Pts</div>
-                          {m.sunnahPresentCount > 0 ? (
-                            <div className="text-[10px] font-bold text-amber-400 flex items-center justify-end gap-0.5">
-                              <Star size={9} className="fill-amber-400" /> {m.sunnahPresentCount} Sunnah
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-slate-500">{m.wajibPercentage}% Wajib</div>
+
+                        {/* Mid badge: stats */}
+                        <div className="hidden sm:flex items-center gap-3 text-xs shrink-0">
+                          <div className="text-right">
+                            <span className="text-[11px] text-slate-400">Wajib: </span>
+                            <span className="font-bold text-slate-200">{m.wajibPercentage}%</span>
+                          </div>
+                          {m.sunnahPresentCount > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <Star size={9} className="fill-amber-400" /> +{m.sunnahBonusPoints} Pts
+                            </span>
                           )}
+                        </div>
+
+                        {/* Right: Score */}
+                        <div className="text-right shrink-0">
+                          <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 font-black text-xs sm:text-sm tabular-nums">
+                            {m.totalScore} Pts
+                          </span>
                         </div>
                       </div>
                     ))}
@@ -3564,10 +3590,10 @@ export default function App() {
             </div>
 
             {/* 3. LEADERBOARD SECTION (RATA-RATA INSTRUMEN) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 w-full max-w-full">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
                     <Music size={18} className="text-amber-400" />
                     Peringkat Disiplin Unit Section Instrumen
                   </h3>
@@ -3576,15 +3602,23 @@ export default function App() {
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
                 {sectionLeaderboard.map((board, index) => (
-                  <div key={board.section} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
+                  <div key={board.section} className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 hover:border-purple-600/40 transition-colors">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs text-slate-400 font-bold">#{index + 1} {board.section}</span>
+                      <span className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-md bg-purple-950 text-purple-300 font-mono text-[10px] flex items-center justify-center font-bold">#{index + 1}</span>
+                        <span>{board.section}</span>
+                      </span>
                       <span className="text-[10px] text-purple-300 font-semibold">{board.members} Pemain</span>
                     </div>
-                    <div className="text-2xl font-black text-amber-300 tabular-nums">{board.average}%</div>
-                    <div className="text-[10px] text-slate-500">{board.presentTotal} Total Hadir</div>
+                    <div className="flex items-baseline justify-between">
+                      <div className="text-2xl font-black text-amber-300 tabular-nums">{board.average}%</div>
+                      <div className="text-[10px] text-slate-400">{board.presentTotal} Total Hadir</div>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-slate-900 overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-purple-500 to-amber-400 rounded-full" style={{ width: `${Math.min(board.average, 100)}%` }}></div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3619,7 +3653,7 @@ export default function App() {
               {/* Filters Bar: Section + Sunnah Attendance */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
                 {/* Section filter pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto">
+                <div className="flex flex-wrap items-center gap-1.5 max-w-full">
                   <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1">
                     <Filter size={12} /> Section:
                   </span>
@@ -3640,7 +3674,7 @@ export default function App() {
                 </div>
 
                 {/* Sunnah participation filter */}
-                <div className="flex items-center gap-1.5 overflow-x-auto">
+                <div className="flex flex-wrap items-center gap-1.5 max-w-full">
                   <button
                     type="button"
                     onClick={() => setRecapSunnahFilter('all')}
@@ -3787,18 +3821,45 @@ export default function App() {
                               </div>
                             </td>
 
-                            <td className="py-3 px-3 text-center">
-                              {student.sunnahPresentCount >= 2 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              {student.totalWajibDays === 0 ? (
+                                <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
+                                  Aktif
+                                </span>
+                              ) : student.sunnahPresentCount >= 2 || (student.sunnahPresentCount >= 1 && student.wajibPercentage >= 90) ? (
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40 shadow-sm"
+                                  title={`Teladan: ${student.sunnahPresentCount} Sesi Sunnah (+${student.sunnahBonusPoints} Pts), ${student.wajibPercentage}% Wajib`}
+                                >
                                   🌟 Teladan
                                 </span>
                               ) : student.wajibPercentage >= 80 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 text-[10px] font-semibold border border-emerald-800">
-                                  Disiplin
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 text-[10px] font-semibold border border-emerald-800"
+                                  title={`Disiplin: Kehadiran Wajib ${student.wajibPercentage}%`}
+                                >
+                                  ✅ Disiplin
+                                </span>
+                              ) : student.alfaCount === 0 && (student.izinCount > 0 || student.sakitCount > 0) ? (
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full bg-sky-950 text-sky-300 text-[10px] font-semibold border border-sky-800"
+                                  title={`Berhalangan Sah: ${student.izinCount} Izin, ${student.sakitCount} Sakit (Tanpa Alfa)`}
+                                >
+                                  📋 Izin / Sakit Sah
+                                </span>
+                              ) : student.wajibPercentage >= 60 ? (
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full bg-blue-950 text-blue-300 text-[10px] font-semibold border border-blue-800"
+                                  title={`Cukup: Kehadiran Wajib ${student.wajibPercentage}%`}
+                                >
+                                  Cukup
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 text-[10px] font-semibold border border-rose-800">
-                                  Perlu Binaan
+                                <span 
+                                  className="px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 text-[10px] font-semibold border border-amber-800/80"
+                                  title={`Perhatian: Kehadiran Wajib ${student.wajibPercentage}%, Alfa ${student.alfaCount}`}
+                                >
+                                  ⚠️ Perlu Perhatian
                                 </span>
                               )}
                             </td>

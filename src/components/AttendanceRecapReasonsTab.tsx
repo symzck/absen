@@ -559,7 +559,7 @@ export const AttendanceRecapReasonsTab: React.FC<AttendanceRecapReasonsTabProps>
         {/* Filters bar: Section pills + Reason chips */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
           {/* Section filter pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
             <span className="text-xs font-bold text-slate-400 mr-1 flex items-center gap-1">
               <Filter size={12} /> Unit:
             </span>
@@ -580,7 +580,7 @@ export const AttendanceRecapReasonsTab: React.FC<AttendanceRecapReasonsTabProps>
           </div>
 
           {/* Quick reason category pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1.5 max-w-full">
             <button
               type="button"
               onClick={() => setSelectedReasonFilter('all')}

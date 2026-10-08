@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Calendar, Clock, UserCheck, Edit3, Trash2, CheckCircle2, 
   AlertCircle, ChevronRight, Save, X, RotateCcw, Send, Shield, Sparkles, Filter,
-  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play, Plus, FileText
+  Lock, Unlock, CheckSquare, AlertTriangle, MapPin, Layers, Timer, Play, Plus, FileText, Search
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
 import { calculateSessionCountdown, sortSessionsByClosest } from './OfficerSubmissionGuide';
@@ -69,6 +69,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionData, setEditSessionData] = useState<AttendanceSession | null>(null);
   const [sessionSearchQuery, setSessionSearchQuery] = useState('');
+  const [editStudentSearchQuery, setEditStudentSearchQuery] = useState('');
   
   // Deletion modal
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
@@ -114,18 +115,33 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
   const finishedUnclosedCount = sessions.filter(s => s.isSubmitted !== false && !s.isClosed).length;
 
   const handleStartEdit = (session: AttendanceSession) => {
-    if (!isAdmin && session.isClosed) {
-      triggerToast('Sesi telah ditutup & terkunci. Hanya Administrator yang dapat mengubah data.', 'warning');
-      return;
-    }
+    // Mode editing presensi diizinkan aktif meskipun sesi sudah habis / ditutup
     const sessionId = session.id || `sesi-${session.date}`;
     setEditingSessionId(sessionId);
+    setEditStudentSearchQuery('');
     // Clone deep copy
     setEditSessionData(JSON.parse(JSON.stringify({
       ...session,
       id: sessionId,
       sessionName: session.sessionName || 'Latihan Rutin'
     })));
+  };
+
+  const handleMarkAllPresentInEdit = () => {
+    if (!editSessionData) return;
+    setEditSessionData(prev => {
+      if (!prev) return prev;
+      const records = students.map(s => {
+        const existing = prev.records.find(r => r.studentId === s.id);
+        return {
+          studentId: s.id,
+          status: 'Hadir',
+          note: existing?.note || ''
+        };
+      });
+      return { ...prev, records };
+    });
+    triggerToast('Seluruh anggota ditandai Hadir pada sesi ini.', 'info');
   };
 
   const handleSaveEditedSession = () => {
@@ -407,260 +423,6 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
         </div>
       </div>
 
-      {/* If currently editing a session (Admin Only) */}
-      {isAdmin && editingSessionId && editSessionData ? (
-        <div className="bg-slate-900 border-2 border-purple-500/50 rounded-3xl p-6 shadow-2xl space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 pb-4 border-b border-slate-800">
-            <div>
-              <div className="inline-flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
-                <Sparkles size={14} />
-                <span>MODE EDIT & KOREKSI ABSEN (ADMINISTRATOR)</span>
-              </div>
-              <h3 className="text-xl font-black text-white">
-                Edit Sesi: {editSessionData.sessionName || 'Latihan Rutin'} ({editSessionData.date})
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Ubah status kehadiran masing-masing siswa dan simpan perubahan untuk memperbarui database.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingSessionId(null);
-                  setEditSessionData(null);
-                }}
-                className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEditedSession}
-                className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
-              >
-                <Save size={16} />
-                <span>Simpan Perubahan Koreksi</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Session Metadata Edit Form */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Nama Sesi / Kegiatan
-              </label>
-              <input
-                type="text"
-                value={editSessionData.sessionName || ''}
-                onChange={(e) => setEditSessionData({ ...editSessionData, sessionName: e.target.value })}
-                className="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
-                placeholder="Contoh: Latihan Pagi, Gladi Bersih, dll"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Tanggal Sesi
-              </label>
-              <input
-                type="date"
-                value={editSessionData.date}
-                onChange={(e) => setEditSessionData({ ...editSessionData, date: e.target.value })}
-                className="w-full text-xs px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
-              />
-            </div>
-          </div>
-
-          {/* Students List in Edit Mode */}
-          <div className="overflow-x-auto max-h-[500px] border border-slate-800 rounded-2xl">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-950 text-slate-400 font-bold sticky top-0 z-10 border-b border-slate-800">
-                <tr>
-                  <th className="py-3 px-4">Nama Pemain</th>
-                  <th className="py-3 px-4">Section / Kelas</th>
-                  <th className="py-3 px-4 text-center">Status Kehadiran</th>
-                  <th className="py-3 px-4 hidden sm:table-cell">Catatan Halangan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {students.map(student => {
-                  const rec = editSessionData.records.find(r => r.studentId === student.id) || {
-                    status: '',
-                    note: ''
-                  };
-
-                  return (
-                    <tr key={student.id} className="hover:bg-slate-800/30">
-                      <td className="py-2.5 px-4 font-bold text-white align-top sm:align-middle">
-                        <div>{student.name}</div>
-                        {/* Input Keterangan Khusus Mobile */}
-                        <div className="sm:hidden mt-2 pt-1.5 border-t border-slate-800/70 font-normal">
-                          {rec.status === 'Izin' ? (
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] font-bold text-blue-400 flex items-center justify-between">
-                                <span className="flex items-center gap-1">
-                                  <FileText size={11} /> Alasan Izin:
-                                </span>
-                                {rec.note && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleNoteChangeInEdit(student.id, '')}
-                                    className="text-[9px] text-slate-400 hover:text-rose-400"
-                                  >
-                                    Reset
-                                  </button>
-                                )}
-                              </div>
-                              <div className="grid grid-cols-2 gap-1.5">
-                                {['Pulang', 'Organisasi', 'Acara Sekolah', 'Acara Keluarga'].map(reason => {
-                                  const isSelected = rec.note === reason;
-                                  return (
-                                    <button
-                                      key={reason}
-                                      type="button"
-                                      onClick={() => handleNoteChangeInEdit(student.id, isSelected ? '' : reason)}
-                                      className={`text-[10px] py-1.5 px-2 rounded-lg font-bold border transition-all text-center ${
-                                        isSelected
-                                          ? 'bg-blue-600 border-blue-400 text-white shadow-sm ring-1 ring-blue-400'
-                                          : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-blue-500/50 hover:text-blue-300'
-                                      }`}
-                                    >
-                                      {reason}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : (
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 whitespace-nowrap">
-                                  <FileText size={11} className={rec.note ? "text-amber-400" : "text-slate-500"} />
-                                  <span>Ket:</span>
-                                </span>
-                                <div className="relative flex-1">
-                                  <input
-                                    type="text"
-                                    value={rec.note || ''}
-                                    onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
-                                    placeholder={
-                                      rec.status === 'Sakit'
-                                        ? 'Ket sakit (cth: Demam, UKS)...'
-                                        : 'Keterangan...'
-                                    }
-                                    className={`w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 border transition-all ${
-                                      rec.note 
-                                        ? 'border-amber-500/50 text-amber-200' 
-                                        : 'border-slate-800 text-slate-200 placeholder-slate-600 focus:border-amber-500/60'
-                                    } focus:outline-none focus:ring-1 focus:ring-amber-500/50 pr-6`}
-                                  />
-                                  {rec.note && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleNoteChangeInEdit(student.id, '')}
-                                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-400 p-0.5"
-                                      title="Hapus keterangan"
-                                    >
-                                      <X size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              {rec.status === 'Sakit' && !rec.note && (
-                                <div className="flex flex-wrap gap-1 mt-1 pl-8">
-                                  {['Demam', 'UKS', 'Flu/Batuk', 'Cedera'].map(preset => (
-                                    <button
-                                      key={preset}
-                                      type="button"
-                                      onClick={() => handleNoteChangeInEdit(student.id, preset)}
-                                      className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-slate-800/90 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40"
-                                    >
-                                      +{preset}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 text-slate-300 align-top sm:align-middle">
-                        <span className="text-amber-400 font-semibold">{student.section}</span> · Kls {student.kelas} · Asr {student.asrama}
-                      </td>
-                      <td className="py-2.5 px-4 align-top sm:align-middle">
-                        <div className="flex items-center justify-center gap-1">
-                          {[
-                            { key: 'Hadir', bg: 'bg-emerald-600 text-white', label: 'H' },
-                            { key: 'Sakit', bg: 'bg-amber-600 text-white', label: 'S' },
-                            { key: 'Izin', bg: 'bg-blue-600 text-white', label: 'I' },
-                            { key: 'Alfa', bg: 'bg-rose-600 text-white', label: 'A' }
-                          ].map(st => (
-                            <button
-                              type="button"
-                              key={st.key}
-                              onClick={() => handleStatusChangeInEdit(student.id, rec.status === st.key ? '' : st.key)}
-                              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                                rec.status === st.key
-                                  ? `${st.bg} shadow-md`
-                                  : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
-                              }`}
-                              title={st.key}
-                            >
-                              {st.key}
-                            </button>
-                          ))}
-                          <button
-                            type="button"
-                            onClick={() => handleStatusChangeInEdit(student.id, '')}
-                            title="Batalkan status presensi siswa ini"
-                            className={`px-2 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                              !rec.status
-                                ? 'bg-slate-900 text-slate-500 border border-slate-800/80 cursor-default opacity-60'
-                                : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/30'
-                            }`}
-                          >
-                            Batal
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-2.5 px-4 hidden sm:table-cell align-middle">
-                        {rec.status === 'Izin' ? (
-                          <select
-                            value={rec.note || ''}
-                            onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
-                            className={`w-full text-xs px-2.5 py-1.5 rounded-xl border font-semibold cursor-pointer transition-all ${
-                              rec.note 
-                                ? 'bg-blue-950/50 border-blue-600 text-blue-200' 
-                                : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
-                            }`}
-                          >
-                            <option value="">-- Pilih Alasan Izin --</option>
-                            <option value="Pulang">Pulang</option>
-                            <option value="Organisasi">Organisasi</option>
-                            <option value="Acara Sekolah">Acara Sekolah</option>
-                            <option value="Acara Keluarga">Acara Keluarga</option>
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={rec.note || ''}
-                            onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
-                            placeholder={rec.status === 'Sakit' ? 'Ket sakit (cth: Demam, UKS)...' : 'Keterangan halangan...'}
-                            className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
-                          />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
       {/* Sessions List Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {filteredSessions.length === 0 ? (
@@ -786,7 +548,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                 </div>
 
                 {/* Stat Counters */}
-                <div className="grid grid-cols-4 gap-2 my-3.5">
+                <div className="grid grid-cols-2 xs:grid-cols-4 gap-2 my-3.5">
                   <div className="p-2 rounded-xl bg-slate-950 border border-slate-800/80 text-center">
                     <div className="text-[10px] text-slate-400 font-semibold">Hadir</div>
                     <div className="text-sm font-black text-emerald-400">{hadirCount}</div>
@@ -807,9 +569,9 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
 
                 <div className="text-[11px] text-slate-400 mb-4">
                   {isClosed ? (
-                    <span className="text-slate-400 flex items-center gap-1.5">
-                      <Lock size={12} className="text-amber-400" />
-                      Sesi ditutup & dikunci pada <strong className="text-slate-200">{session.closedAt || session.date}</strong> oleh <strong className="text-purple-300">{session.closedBy || 'Admin'}</strong>
+                    <span className="text-emerald-400/90 flex flex-wrap items-center gap-1.5">
+                      <CheckCircle2 size={12} className="text-emerald-400" />
+                      Sesi selesai ({session.date}). Mode koreksi & presensi susulan <strong className="text-white">tersedia aktif</strong>.
                     </span>
                   ) : isUpcoming && !isAdmin ? (
                     <span className="text-amber-300 flex items-center gap-1.5 font-medium">
@@ -823,39 +585,41 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                     </span>
                   ) : (
                     <span className="text-amber-400 font-medium">
-                      ⚠️ Status Draf. {isExpired ? 'Sesi telah lewat tanggal.' : 'Belum difinalisasi ke rekapitulasi.'}
+                      ⚠️ Status Draf. {isExpired ? 'Sesi telah lewat tanggal (dapat diedit).' : 'Belum difinalisasi ke rekapitulasi.'}
                     </span>
                   )}
                 </div>
 
                 {/* Button actions */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
-                  {/* Non-Admin: Quick open attendance button */}
-                  {!isAdmin ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onSelectSessionDate) {
-                          onSelectSessionDate(session.date);
-                        }
-                      }}
-                      className="w-full py-2 px-3 bg-purple-700/30 hover:bg-purple-700/60 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      <Play size={14} className="text-amber-400" />
-                      <span>{isUpcoming ? 'Lihat Lembar Presensi Sesi Ini' : 'Buka & Isi Presensi Sesi Ini'}</span>
-                    </button>
-                  ) : (
-                    <>
-                      {/* Admin Controls */}
-                      <button
-                        type="button"
-                        onClick={() => handleStartEdit(session)}
-                        className="flex-1 py-2 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Edit3 size={14} />
-                        <span>Edit Data</span>
-                      </button>
+                  {/* Edit Data: Modal opens immediately for Admin, Petugas, and Personalia */}
+                  <button
+                    type="button"
+                    onClick={() => handleStartEdit(session)}
+                    className="flex-1 min-w-[120px] py-2 px-3 bg-purple-700/40 hover:bg-purple-600/70 active:scale-95 border border-purple-500/50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    title="Buka modal edit & koreksi data presensi sesi ini"
+                  >
+                    <Edit3 size={14} className="text-amber-400" />
+                    <span>Edit Data</span>
+                  </button>
 
+                  {/* Buka di Lembar Absensi Utama */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onSelectSessionDate) {
+                        onSelectSessionDate(session.date);
+                      }
+                    }}
+                    className="py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    title="Buka langsung di lembar absensi utama"
+                  >
+                    <Play size={14} className="text-amber-400" />
+                    <span>{isClosed ? 'Koreksi Lembar' : isUpcoming ? 'Lihat Lembar' : 'Isi Lembar'}</span>
+                  </button>
+
+                  {isAdmin && (
+                    <>
                       {/* Toggle Close / Reopen Session Button */}
                       <button
                         type="button"
@@ -888,6 +652,7 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
                             ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                             : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950'
                         }`}
+                        title={isSubmitted ? 'Kembalikan status menjadi Draf' : 'Finalisasi & submit presensi'}
                       >
                         {isSubmitted ? (
                           <>
@@ -959,6 +724,364 @@ export const AttendanceSessionsTab: React.FC<AttendanceSessionsTabProps> = ({
           onConfirm={handleCloseAllFinishedConfirm}
           onCancel={() => setIsCloseAllFinishedModalOpen(false)}
         />
+      )}
+
+      {/* Edit Session Modal Overlay (For both Admin & Petugas / Personalia) */}
+      {editingSessionId && editSessionData && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200"
+          onClick={() => {
+            setEditingSessionId(null);
+            setEditSessionData(null);
+          }}
+        >
+          <div 
+            className="bg-slate-900 border-2 border-purple-500/60 rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 w-full max-w-4xl my-auto animate-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col text-left"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pb-3 border-b border-slate-800 shrink-0">
+              <div>
+                <div className="inline-flex items-center gap-2 text-xs font-bold text-amber-400 mb-1">
+                  <Sparkles size={14} />
+                  <span>MODE EDIT & KOREKSI ABSENSI</span>
+                  {editSessionData.isClosed ? (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
+                      Sesi Selesai (Koreksi Aktif)
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-bold">
+                      Sesi Aktif
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-white">
+                  Edit Sesi: {editSessionData.sessionName || 'Latihan Rutin'} ({editSessionData.date})
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Ubah nama kegiatan, tanggal, serta kehadiran dan catatan masing-masing pemain.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSessionId(null);
+                    setEditSessionData(null);
+                  }}
+                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  title="Tutup dialog"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Actions & Session Metadata */}
+            <div className="space-y-3 shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Nama Sesi / Agenda
+                  </label>
+                  <input
+                    type="text"
+                    value={editSessionData.sessionName || ''}
+                    onChange={(e) => setEditSessionData({ ...editSessionData, sessionName: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    placeholder="Contoh: Latihan Pagi, Gladi Bersih, dll"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                    Tanggal Sesi
+                  </label>
+                  <input
+                    type="date"
+                    value={editSessionData.date}
+                    onChange={(e) => setEditSessionData({ ...editSessionData, date: e.target.value })}
+                    className="w-full text-xs px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-white focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* Search & Bulk Action Bar */}
+              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-1">
+                <div className="relative flex-1 max-w-sm">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Cari pemain di sesi ini..."
+                    value={editStudentSearchQuery}
+                    onChange={(e) => setEditStudentSearchQuery(e.target.value)}
+                    className="w-full text-xs pl-8 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleMarkAllPresentInEdit}
+                    className="px-3 py-1.5 bg-emerald-600/30 hover:bg-emerald-600/60 border border-emerald-500/40 text-emerald-300 hover:text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <CheckSquare size={13} />
+                    <span>Hadir Semua</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const d = editSessionData.date;
+                      setEditingSessionId(null);
+                      setEditSessionData(null);
+                      if (onSelectSessionDate) onSelectSessionDate(d);
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Buka tampilan lembar presensi utama"
+                  >
+                    <Play size={13} className="text-amber-400" />
+                    <span>Lembar Lengkap</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Students List Table (Scrollable inside modal) */}
+            <div className="overflow-x-auto max-h-[380px] border border-slate-800 rounded-2xl flex-1 scrollbar-thin">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-950 text-slate-400 font-bold sticky top-0 z-10 border-b border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-3">Nama Pemain</th>
+                    <th className="py-2.5 px-3">Section / Kelas</th>
+                    <th className="py-2.5 px-3 text-center">Status Kehadiran</th>
+                    <th className="py-2.5 px-3 hidden sm:table-cell">Catatan Halangan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {students
+                    .filter(s => {
+                      if (!editStudentSearchQuery) return true;
+                      const q = editStudentSearchQuery.toLowerCase();
+                      return s.name.toLowerCase().includes(q) || s.section.toLowerCase().includes(q) || s.kelas.toLowerCase().includes(q);
+                    })
+                    .map(student => {
+                      const rec = editSessionData.records.find(r => r.studentId === student.id) || {
+                        status: '',
+                        note: ''
+                      };
+
+                      return (
+                        <tr key={student.id} className="hover:bg-slate-800/30">
+                          <td className="py-2.5 px-3 font-bold text-white align-top sm:align-middle">
+                            <div>{student.name}</div>
+                            {/* Input Keterangan Khusus Mobile */}
+                            <div className="sm:hidden mt-2 pt-1.5 border-t border-slate-800/70 font-normal">
+                              {rec.status === 'Izin' ? (
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] font-bold text-blue-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                      <FileText size={11} /> Alasan Izin:
+                                    </span>
+                                    {rec.note && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleNoteChangeInEdit(student.id, '')}
+                                        className="text-[9px] text-slate-400 hover:text-rose-400"
+                                      >
+                                        Reset
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    {['Pulang', 'Organisasi', 'Acara Sekolah', 'Acara Keluarga'].map(reason => {
+                                      const isSelected = rec.note === reason;
+                                      return (
+                                        <button
+                                          key={reason}
+                                          type="button"
+                                          onClick={() => handleNoteChangeInEdit(student.id, isSelected ? '' : reason)}
+                                          className={`text-[10px] py-1.5 px-2 rounded-lg font-bold border transition-all text-center ${
+                                            isSelected
+                                              ? 'bg-blue-600 border-blue-400 text-white shadow-sm ring-1 ring-blue-400'
+                                              : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-blue-500/50 hover:text-blue-300'
+                                          }`}
+                                        >
+                                          {reason}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 whitespace-nowrap">
+                                      <FileText size={11} className={rec.note ? "text-amber-400" : "text-slate-500"} />
+                                      <span>Ket:</span>
+                                    </span>
+                                    <div className="relative flex-1">
+                                      <input
+                                        type="text"
+                                        value={rec.note || ''}
+                                        onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                                        placeholder={
+                                          rec.status === 'Sakit'
+                                            ? 'Ket sakit (cth: Demam, UKS)...'
+                                            : 'Keterangan...'
+                                        }
+                                        className={`w-full text-xs px-2.5 py-1.5 rounded-lg bg-slate-950 border transition-all ${
+                                          rec.note 
+                                            ? 'border-amber-500/50 text-amber-200' 
+                                            : 'border-slate-800 text-slate-200 placeholder-slate-600 focus:border-amber-500/60'
+                                        } focus:outline-none focus:ring-1 focus:ring-amber-500/50 pr-6`}
+                                      />
+                                      {rec.note && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleNoteChangeInEdit(student.id, '')}
+                                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-400 p-0.5"
+                                          title="Hapus keterangan"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {rec.status === 'Sakit' && !rec.note && (
+                                    <div className="flex flex-wrap gap-1 mt-1 pl-8">
+                                      {['Demam', 'UKS', 'Flu/Batuk', 'Cedera'].map(preset => (
+                                        <button
+                                          key={preset}
+                                          type="button"
+                                          onClick={() => handleNoteChangeInEdit(student.id, preset)}
+                                          className="text-[9.5px] px-1.5 py-0.5 rounded-md bg-slate-800/90 text-amber-300 hover:bg-amber-950/60 border border-amber-900/40"
+                                        >
+                                          +{preset}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-slate-300 align-top sm:align-middle whitespace-nowrap">
+                            <span className="text-amber-400 font-semibold">{student.section}</span> · Kls {student.kelas}
+                          </td>
+                          <td className="py-2.5 px-3 align-top sm:align-middle">
+                            <div className="flex items-center justify-center gap-1">
+                              {[
+                                { key: 'Hadir', bg: 'bg-emerald-600 text-white', label: 'H' },
+                                { key: 'Sakit', bg: 'bg-amber-600 text-white', label: 'S' },
+                                { key: 'Izin', bg: 'bg-blue-600 text-white', label: 'I' },
+                                { key: 'Alfa', bg: 'bg-rose-600 text-white', label: 'A' }
+                              ].map(st => (
+                                <button
+                                  type="button"
+                                  key={st.key}
+                                  onClick={() => handleStatusChangeInEdit(student.id, rec.status === st.key ? '' : st.key)}
+                                  className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                                    rec.status === st.key
+                                      ? `${st.bg} shadow-md`
+                                      : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-white'
+                                  }`}
+                                  title={st.key}
+                                >
+                                  {st.key}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => handleStatusChangeInEdit(student.id, '')}
+                                title="Batalkan status presensi siswa ini"
+                                className={`px-2 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                                  !rec.status
+                                    ? 'bg-slate-900 text-slate-500 border border-slate-800/80 cursor-default opacity-60'
+                                    : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/40 border border-rose-900/30'
+                                }`}
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 hidden sm:table-cell align-middle">
+                            {rec.status === 'Izin' ? (
+                              <select
+                                value={rec.note || ''}
+                                onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                                className={`w-full text-xs px-2.5 py-1.5 rounded-xl border font-semibold cursor-pointer transition-all ${
+                                  rec.note 
+                                    ? 'bg-blue-950/50 border-blue-600 text-blue-200' 
+                                    : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-600'
+                                }`}
+                              >
+                                <option value="">-- Pilih Alasan Izin --</option>
+                                <option value="Pulang">Pulang</option>
+                                <option value="Organisasi">Organisasi</option>
+                                <option value="Acara Sekolah">Acara Sekolah</option>
+                                <option value="Acara Keluarga">Acara Keluarga</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={rec.note || ''}
+                                onChange={(e) => handleNoteChangeInEdit(student.id, e.target.value)}
+                                placeholder={rec.status === 'Sakit' ? 'Ket sakit (cth: Demam, UKS)...' : 'Keterangan halangan...'}
+                                className="w-full text-xs px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                              />
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pt-3 border-t border-slate-800 shrink-0">
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="font-semibold text-emerald-400">
+                  {editSessionData.records.filter(r => r.status === 'Hadir').length} Hadir
+                </span>
+                <span>·</span>
+                <span className="font-semibold text-amber-400">
+                  {editSessionData.records.filter(r => r.status === 'Sakit').length} Sakit
+                </span>
+                <span>·</span>
+                <span className="font-semibold text-blue-400">
+                  {editSessionData.records.filter(r => r.status === 'Izin').length} Izin
+                </span>
+                <span>·</span>
+                <span className="font-semibold text-rose-400">
+                  {editSessionData.records.filter(r => r.status === 'Alfa').length} Alfa
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSessionId(null);
+                    setEditSessionData(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEditedSession}
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-purple-950 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Save size={15} />
+                  <span>Simpan Perubahan Koreksi</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

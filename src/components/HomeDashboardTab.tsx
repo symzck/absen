@@ -443,7 +443,7 @@ export const HomeDashboardTab: React.FC<HomeDashboardTabProps> = ({
                       onClick={() => handleSelectSessionDate(session.date)}
                       className="flex-1 py-1.5 px-3 bg-purple-700/30 hover:bg-purple-700/50 border border-purple-600/40 text-purple-200 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center"
                     >
-                      <span>{isClosed ? 'Lihat Presensi' : isUpcoming && !isAdmin ? '⏳ Buka Sesi (Countdown)' : 'Presensi Sesi Ini'}</span>
+                      <span>{isClosed ? 'Buka & Edit Presensi' : isUpcoming && !isAdmin ? '⏳ Buka Sesi (Countdown)' : 'Presensi Sesi Ini'}</span>
                       <ArrowRight size={13} className="shrink-0" />
                     </button>
 

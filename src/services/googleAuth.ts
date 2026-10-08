@@ -1,5 +1,4 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAnalytics, isSupported } from 'firebase/analytics';
 import { 
   getAuth, 
   signInWithPopup, 
@@ -12,11 +11,6 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-
-// Inisialisasi Firebase Analytics jika didukung pada environment browser
-export const analyticsPromise = typeof window !== 'undefined'
-  ? isSupported().then((supported) => (supported ? getAnalytics(app) : null)).catch(() => null)
-  : Promise.resolve(null);
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/spreadsheets');

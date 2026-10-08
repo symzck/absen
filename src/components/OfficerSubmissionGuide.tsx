@@ -216,8 +216,8 @@ export const OfficerSubmissionGuide: React.FC<OfficerSubmissionGuideProps> = ({
               <span>Sesi: <strong className="text-amber-300">{sessionName || 'Latihan Rutin'}</strong></span>
               
               {isClosed ? (
-                <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-bold inline-flex items-center gap-1">
-                  <Lock size={10} className="text-amber-400" /> Sesi Terkunci / Ditutup
+                <span className="px-2 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-700/60 text-[10px] font-bold inline-flex items-center gap-1">
+                  <CheckCircle2 size={10} className="text-emerald-400" /> Selesai (Mode Koreksi Aktif)
                 </span>
               ) : isUpcoming ? (
                 <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold inline-flex items-center gap-1">
@@ -370,15 +370,19 @@ export const OfficerSubmissionGuide: React.FC<OfficerSubmissionGuideProps> = ({
             </button>
           )}
 
-          {/* Submit button: enabled only if session is not closed and (admin or session has started) */}
-          {!isClosed && !isSubmitted && (isAdmin || !isUpcoming) && (
+          {/* Submit button: enabled for saving or updating attendance */}
+          {(isAdmin || !isUpcoming) && (
             <button
               type="button"
               onClick={onOpenSubmitModal}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-950 transition-all active:scale-95 cursor-pointer shrink-0"
+              className={`px-4 py-2 font-black rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer shrink-0 ${
+                isSubmitted
+                  ? 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-600/40 shadow-slate-950'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-950'
+              }`}
             >
               <Send size={14} />
-              <span>Submit Presensi Sesi Ini</span>
+              <span>{isSubmitted ? 'Perbarui Submit Presensi' : 'Submit Presensi Sesi Ini'}</span>
             </button>
           )}
         </div>
