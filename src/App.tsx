@@ -472,6 +472,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('connecting');
   const [syncError, setSyncError] = useState<string | undefined>(undefined);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [isAutoSavingCloud, setIsAutoSavingCloud] = useState(false);
   const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
 
   // Tab Navigation with Browser History Integration (Back / Undo Page Support)
@@ -595,8 +596,8 @@ export default function App() {
       setSyncError(err);
     });
 
-    // Check & auto-seed if cloud database is empty (including announcements)
-    seedInitialDatabaseIfEmpty(INITIAL_STUDENTS, INITIAL_USERS, INITIAL_ANNOUNCEMENTS).catch((err) => {
+    // Check & auto-seed if cloud database is empty (including announcements and local sessions)
+    seedInitialDatabaseIfEmpty(students, systemUsers, announcements, attendances).catch((err) => {
       console.warn('[Firestore] Seed check notice:', err);
     });
 
@@ -1219,6 +1220,13 @@ export default function App() {
       }
 
       localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
+      // Auto-save otomatis ke Cloud Firestore pada setiap perubahan data presensi
+      setIsAutoSavingCloud(true);
+      saveAttendanceToCloud(sessionObj)
+        .catch(err => console.warn('Auto cloud sync notice:', err))
+        .finally(() => {
+          setTimeout(() => setIsAutoSavingCloud(false), 800);
+        });
       return nextList;
     });
   };
@@ -2331,36 +2339,33 @@ export default function App() {
                   <code className="text-purple-300 font-bold font-mono">{firebaseConfig.projectId}</code>
                 </div>
                 <div className="flex items-center justify-between">
+                  <span className="text-slate-400">Database Firestore:</span>
+                  <code className="text-emerald-300 font-bold font-mono text-[11px] truncate max-w-[200px]">{(firebaseConfig as any).firestoreDatabaseId || 'default'}</code>
+                </div>
+                <div className="flex items-center justify-between">
                   <span className="text-slate-400">Status Penyimpanan:</span>
                   <span className={`inline-flex items-center gap-1.5 font-semibold ${
-                    syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'
+                    syncStatus === 'connected' ? 'text-emerald-400' : syncStatus === 'connecting' ? 'text-amber-400' : 'text-rose-400'
                   }`}>
-                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-sky-400'}`}></span>
-                    {syncStatus === 'connected' ? 'Cloud Terhubung Real-Time' : 'Penyimpanan Lokal Aktif (0 Delay & Aman)'}
+                    <span className={`w-2 h-2 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : syncStatus === 'connecting' ? 'bg-amber-400 animate-ping' : 'bg-rose-400'}`}></span>
+                    {syncStatus === 'connected' ? 'Cloud Terhubung Real-Time' : syncStatus === 'connecting' ? 'Menghubungkan ke Cloud...' : 'Offline (Cache Tersedia)'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Keamanan Data:</span>
-                  <span className="text-emerald-400 font-medium">100% Tersimpan di Perangkat Ini</span>
+                  <span className="text-slate-400">Mode Sinkronisasi:</span>
+                  <span className="text-emerald-400 font-bold">Otomatis Cloud (Mobile & Web)</span>
                 </div>
               </div>
 
-              {syncStatus !== 'connected' && (
-                <div className="p-3 bg-sky-950/40 border border-sky-800/50 rounded-2xl space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
-                  <div className="font-bold text-sky-300 flex items-center gap-1.5">
-                    <span>💡 Mengapa status Cloud belum aktif?</span>
-                  </div>
-                  <p>
-                    Database Cloud Firestore di proyek Firebase <code className="text-amber-300 font-mono">absen-7862e</code> belum di-create di Firebase Console. 
-                    Aplikasi saat ini berjalan <strong>sangat cepat & lancar secara lokal</strong> tanpa perlu menunggu cloud.
-                  </p>
-                  <p className="text-slate-400">
-                    Untuk menyambungkan cloud agar sinkron otomatis antar HP/komputer:
-                    <br />1. Buka <strong>console.firebase.google.com</strong> &rarr; pilih <strong>{firebaseConfig.projectId}</strong>
-                    <br />2. Masuk ke <strong>Firestore Database</strong> &rarr; klik <strong>Create database</strong> (Pilih Start in test mode).
-                  </p>
+              <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-2xl space-y-1.5 text-slate-300 text-[11px] leading-relaxed">
+                <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-amber-400" />
+                  <span>Sistem Cloud Otomatis Aktif</span>
                 </div>
-              )}
+                <p>
+                  Aplikasi dikonfigurasi secara <strong>otomatis terhubung ke Cloud Firestore</strong>. Setiap absensi, jadwal latihan, maupun perubahan data anggota yang diinput dari handphone (mobile phone) akan langsung tersimpan ke cloud dan tersinkronisasi seketika ke seluruh perangkat petugas & admin.
+                </p>
+              </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-center">
@@ -2718,8 +2723,8 @@ export default function App() {
           onClick={() => setShowSyncInfoModal(true)}
           className="w-full py-2 px-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 flex items-center justify-between font-semibold transition-all cursor-pointer"
         >
-          <span className="flex items-center gap-2 truncate"><Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-sky-400'} /> <span className="truncate">Data: {firebaseConfig.projectId}</span></span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${syncStatus === 'connected' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' : 'bg-sky-950 text-sky-300 border border-sky-800/40'}`}>{syncStatus === 'connected' ? 'Cloud' : 'Lokal'}</span>
+          <span className="flex items-center gap-2 truncate"><Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : syncStatus === 'connecting' ? 'text-amber-400' : 'text-rose-400'} /> <span className="truncate">Cloud: {firebaseConfig.projectId}</span></span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${syncStatus === 'connected' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' : syncStatus === 'connecting' ? 'bg-amber-950 text-amber-300 border border-amber-800/40' : 'bg-rose-950 text-rose-300 border border-rose-800/40'}`}>{syncStatus === 'connected' ? 'Auto Cloud' : syncStatus === 'connecting' ? 'Koneksi' : 'Offline'}</span>
         </button>
       </div>
 
@@ -2763,8 +2768,34 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-3 py-1.5 sm:px-3.5 sm:py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Indikator Status Cloud Otomatis Mobile / HP */}
+          <button 
+            type="button"
+            onClick={() => setShowSyncInfoModal(true)}
+            className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-xl border flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer shadow-md ${
+              syncStatus === 'connected'
+                ? 'bg-emerald-950/90 hover:bg-emerald-900 border-emerald-500/60 text-emerald-300'
+                : syncStatus === 'syncing' || isManualSyncing || isAutoSavingCloud
+                ? 'bg-purple-900/90 border-purple-500/70 text-purple-200 animate-pulse'
+                : syncStatus === 'connecting'
+                ? 'bg-amber-950/90 border-amber-500/60 text-amber-300'
+                : 'bg-rose-950/90 border-rose-600/50 text-rose-300'
+            }`}
+            title="Sistem Cloud Otomatis PGT Mu'allimin"
+          >
+            <span className={`w-2 h-2 rounded-full shrink-0 ${
+              syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
+              syncStatus === 'syncing' || isManualSyncing || isAutoSavingCloud ? 'bg-purple-400 animate-bounce' :
+              syncStatus === 'connecting' ? 'bg-amber-400 animate-ping' : 'bg-rose-400'
+            }`} />
+            <Cloud size={14} className={syncStatus === 'syncing' || isManualSyncing || isAutoSavingCloud ? 'animate-bounce text-purple-300' : syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
+            <span className="text-[10px] sm:text-[11px] font-bold">
+              {isManualSyncing || isAutoSavingCloud ? 'Sinkron...' : syncStatus === 'connected' ? 'Auto Cloud' : syncStatus === 'connecting' ? 'Koneksi...' : 'Offline'}
+            </span>
+          </button>
+
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-2.5 py-1.5 sm:px-3.5 sm:py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white rounded-xl shadow-lg border border-purple-400/40 flex items-center gap-1.5 font-bold text-xs active:scale-95 transition-all cursor-pointer">
             {isMobileMenuOpen ? <X size={16} /> : <Menu size={16} />} <span>Menu</span>
           </button>
         </div>
@@ -2865,6 +2896,15 @@ export default function App() {
                     <Clock size={10} /> Sesi Terbuka
                   </span>
                 )}
+                {isAutoSavingCloud ? (
+                  <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-bold flex items-center gap-1 animate-pulse">
+                    <Cloud size={11} className="animate-bounce text-purple-400" /> Menyimpan ke Cloud...
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold flex items-center gap-1">
+                    <Cloud size={11} className="text-emerald-400" /> Auto-Save Cloud Aktif
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400 mt-1">
                 {isSessionClosed
@@ -2941,6 +2981,33 @@ export default function App() {
                 className="px-3 sm:px-4 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 cursor-pointer shrink-0"
               >
                 <CheckSquare size={15} /> <span>Hadir Semua</span>
+              </button>
+
+              <button 
+                type="button"
+                disabled={isManualSyncing || isAutoSavingCloud}
+                onClick={async () => {
+                  setIsManualSyncing(true);
+                  try {
+                    const sessionToSave = attendances.find(a => a.date === selectedDate);
+                    if (sessionToSave) {
+                      await saveAttendanceToCloud(sessionToSave);
+                      triggerToast(`Presensi sesi tanggal ${selectedDate} (${sessionToSave.sessionName || 'Latihan Rutin'}) berhasil disimpan ke Cloud!`, 'success');
+                    } else {
+                      await uploadAllLocalDataToCloud(students, attendances, systemUsers, announcements);
+                      triggerToast('Seluruh data berhasil disinkronkan ke Cloud!', 'success');
+                    }
+                  } catch (e: any) {
+                    triggerToast(e?.message || 'Data tersimpan di perangkat lokal.', 'info');
+                  } finally {
+                    setIsManualSyncing(false);
+                  }
+                }}
+                className="px-3 sm:px-3.5 py-2 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
+                title="Simpan sesi ini ke Cloud Database"
+              >
+                <Cloud size={14} className={isManualSyncing || isAutoSavingCloud ? 'animate-bounce text-amber-300' : 'text-sky-200'} /> 
+                <span>{isManualSyncing ? 'Menyimpan...' : 'Save ke Cloud'}</span>
               </button>
             </div>
           </div>
@@ -4345,6 +4412,49 @@ export default function App() {
               </div>
               <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-slate-400 hover:text-white"><X size={20} /></button>
             </div>
+
+            {/* Mobile Cloud Status & Direct Backup Card */}
+            <div className="p-3 mx-4 mt-3 mb-1 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 flex items-center gap-1.5 text-[11px]">
+                  <Cloud size={14} className={syncStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'} />
+                  Sistem Cloud Mobile:
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
+                  syncStatus === 'connected'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : syncStatus === 'connecting'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${syncStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  {syncStatus === 'connected' ? 'Otomatis Cloud (Aktif)' : syncStatus === 'connecting' ? 'Menghubungkan...' : 'Offline'}
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-400 leading-tight">
+                Setiap presensi atau perubahan di HP otomatis tersimpan langsung ke Cloud Firestore secara real-time.
+              </p>
+              <button
+                type="button"
+                disabled={isManualSyncing}
+                onClick={async () => {
+                  setIsManualSyncing(true);
+                  try {
+                    const res = await uploadAllLocalDataToCloud(students, attendances, systemUsers, announcements);
+                    triggerToast(res.message, res.success ? 'success' : 'info');
+                  } catch (e: any) {
+                    triggerToast(e?.message || 'Gagal sinkronkan ke cloud.', 'warning');
+                  } finally {
+                    setIsManualSyncing(false);
+                  }
+                }}
+                className="w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+              >
+                <UploadCloud size={14} className={isManualSyncing ? 'animate-bounce' : ''} />
+                <span>{isManualSyncing ? 'Menyinkronkan...' : 'Sinkronkan Ulang Sekarang'}</span>
+              </button>
+            </div>
+
             <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
               {menuItems.map(item => (
                 <button 

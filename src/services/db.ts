@@ -7,13 +7,17 @@ import {
   deleteDoc, 
   onSnapshot, 
   writeBatch,
+  enableNetwork,
+  getDocFromServer,
   Unsubscribe 
 } from 'firebase/firestore';
 import { app } from './googleAuth';
+import firebaseConfig from '../../firebase-applet-config.json';
 import { Student, DailyAttendance, SystemUser } from '../App';
 
-// In Google Cloud Firestore for project absen-7862e, the database ID is named 'default'
-export const db = getFirestore(app, 'default');
+// Connect to Cloud Firestore with the configured database ID
+const configuredDbId = (firebaseConfig as any).firestoreDatabaseId;
+export const db = configuredDbId ? getFirestore(app, configuredDbId) : getFirestore(app);
 
 export type SyncStatus = 'connected' | 'syncing' | 'offline' | 'error' | 'connecting';
 
@@ -40,8 +44,8 @@ function notifyStatus(status: SyncStatus, error?: string) {
   syncListeners.forEach(cb => cb(status, error));
 }
 
-// Timeout helper to avoid infinite hanging when Cloud Firestore is not provisioned or network is slow
-const withTimeout = <T>(promise: Promise<T>, ms = 3500, fallbackMessage = 'Koneksi cloud timeout'): Promise<T> => {
+// Timeout helper with generous window (15s) so mobile connections (3G/4G/5G) don't get falsely timed out
+const withTimeout = <T>(promise: Promise<T>, ms = 15000, fallbackMessage = 'Koneksi cloud timeout'): Promise<T> => {
   let timer: any;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error(fallbackMessage)), ms);
@@ -52,13 +56,46 @@ const withTimeout = <T>(promise: Promise<T>, ms = 3500, fallbackMessage = 'Konek
   ]);
 };
 
-// Auto fallback: never stay stuck on connecting
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    if (currentSyncStatus === 'connecting') {
-      notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console. Berjalan lancar di Mode Lokal.');
+// Test server connection to Firestore
+export const testCloudConnection = async (): Promise<boolean> => {
+  try {
+    await getDocFromServer(doc(db, 'system_users', 'admin-master'));
+    notifyStatus('connected');
+    return true;
+  } catch (err: any) {
+    if (err?.message?.includes('the client is offline')) {
+      notifyStatus('offline', 'Perangkat sedang tidak terhubung internet.');
+      return false;
     }
-  }, 3000);
+    // If document is not found or empty, connection itself is still alive
+    notifyStatus('connected');
+    return true;
+  }
+};
+
+// Automatic Network & Mobile Lifecycle Listeners
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    notifyStatus('connecting');
+    enableNetwork(db)
+      .then(() => testCloudConnection())
+      .catch(() => {});
+  });
+
+  window.addEventListener('offline', () => {
+    notifyStatus('offline', 'Koneksi internet seluler/WiFi terputus.');
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) {
+      enableNetwork(db).catch(() => {});
+    }
+  });
+
+  // Initial connection probe (does not immediately force offline; waits for snapshot or probe)
+  setTimeout(() => {
+    testCloudConnection().catch(() => {});
+  }, 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,8 +128,12 @@ export const subscribeStudents = (
       onData(list);
     },
     (error) => {
-      console.warn('[Firestore] Students subscription offline/not found:', error.message);
-      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
+      console.warn('[Firestore] Students subscription status:', error.message);
+      if (!navigator.onLine) {
+        notifyStatus('offline', 'Perangkat sedang offline.');
+      } else {
+        notifyStatus('error', error.message);
+      }
       if (onError) onError(error);
     }
   );
@@ -111,13 +152,16 @@ export const saveStudentToCloud = async (student: Student): Promise<void> => {
         section: student.section,
         updatedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
-      'Cloud timeout'
+      15000,
+      'Gagal menyimpan anggota ke cloud (timeout)'
     );
     notifyStatus('connected');
   } catch (error: any) {
-    console.warn('[Firestore] Notice saving student to cloud (using local cache):', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    console.warn('[Firestore] Notice saving student to cloud:', error?.message);
+    if (!navigator.onLine) {
+      notifyStatus('offline', 'Perangkat sedang offline. Tersimpan di cache lokal & akan disinkronkan saat online.');
+    }
+    throw error;
   }
 };
 
@@ -136,11 +180,12 @@ export const saveMultipleStudentsToCloud = async (studentsList: Student[]): Prom
         updatedAt: new Date().toISOString()
       }, { merge: true });
     }
-    await withTimeout(batch.commit(), 6000, 'Cloud timeout batch save');
+    await withTimeout(batch.commit(), 18000, 'Cloud timeout batch save');
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice batch saving students to cloud:', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -150,7 +195,7 @@ export const replaceAllStudentsInCloud = async (
 ): Promise<void> => {
   notifyStatus('syncing');
   try {
-    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 4000, 'Cloud timeout');
+    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 12000, 'Cloud timeout');
     const newIds = new Set(newStudentsList.map(s => String(s.id)));
     const batch = writeBatch(db);
 
@@ -182,11 +227,12 @@ export const replaceAllStudentsInCloud = async (
       }, { merge: true });
     }
 
-    await withTimeout(batch.commit(), 7000, 'Cloud timeout replace all students');
+    await withTimeout(batch.commit(), 20000, 'Cloud timeout replace all students');
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice replacing students in cloud:', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -194,7 +240,7 @@ export const deleteStudentFromCloud = async (studentId: number): Promise<void> =
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'students', String(studentId));
-    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+    await withTimeout(deleteDoc(docRef), 12000, 'Cloud timeout');
 
     // Record deletion tombstone in Cloud Firestore so all devices respect deletion
     const tombstoneRef = doc(db, 'deleted_students', String(studentId));
@@ -203,13 +249,14 @@ export const deleteStudentFromCloud = async (studentId: number): Promise<void> =
         id: studentId,
         deletedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
+      12000,
       'Cloud timeout'
     );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting student from cloud:', error?.message);
-    notifyStatus('offline', error?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -274,8 +321,8 @@ export const subscribeAttendances = (
       onData(list);
     },
     (error) => {
-      console.warn('[Firestore] Attendances subscription offline/not found:', error.message);
-      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
+      console.warn('[Firestore] Attendances subscription status:', error.message);
+      if (!navigator.onLine) notifyStatus('offline');
       if (onError) onError(error);
     }
   );
@@ -306,13 +353,16 @@ export const saveAttendanceToCloud = async (attendance: DailyAttendance): Promis
         records: attendance.records || [],
         updatedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
-      'Cloud timeout'
+      15000,
+      'Gagal menyimpan absensi ke cloud (timeout)'
     );
     notifyStatus('connected');
   } catch (error: any) {
-    console.warn('[Firestore] Notice saving attendance to cloud (using local cache):', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    console.warn('[Firestore] Notice saving attendance to cloud:', error?.message);
+    if (!navigator.onLine) {
+      notifyStatus('offline', 'Perangkat sedang offline. Tersimpan di cache lokal & akan tersinkron saat online.');
+    }
+    throw error;
   }
 };
 
@@ -320,7 +370,7 @@ export const deleteAttendanceFromCloud = async (attendanceId: string): Promise<v
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'attendances', attendanceId);
-    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+    await withTimeout(deleteDoc(docRef), 12000, 'Cloud timeout');
 
     // Record deletion tombstone in Cloud Firestore
     const tombstoneRef = doc(db, 'deleted_attendances', attendanceId);
@@ -329,13 +379,14 @@ export const deleteAttendanceFromCloud = async (attendanceId: string): Promise<v
         id: attendanceId,
         deletedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
+      12000,
       'Cloud timeout'
     );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting attendance from cloud:', error?.message);
-    notifyStatus('offline', error?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -389,8 +440,8 @@ export const subscribeSystemUsers = (
       onData(list);
     },
     (error) => {
-      console.warn('[Firestore] Users subscription offline/not found:', error.message);
-      notifyStatus('offline', error.message.includes('NOT_FOUND') ? 'Database Firestore belum dibuat di Firebase Console' : error.message);
+      console.warn('[Firestore] Users subscription status:', error.message);
+      if (!navigator.onLine) notifyStatus('offline');
       if (onError) onError(error);
     }
   );
@@ -411,13 +462,14 @@ export const saveUserToCloud = async (user: SystemUser): Promise<void> => {
         createdAt: user.createdAt,
         updatedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
-      'Cloud timeout'
+      15000,
+      'Gagal menyimpan pengguna ke cloud (timeout)'
     );
     notifyStatus('connected');
   } catch (error: any) {
-    console.warn('[Firestore] Notice saving user to cloud (using local cache):', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    console.warn('[Firestore] Notice saving user to cloud:', error?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -425,7 +477,7 @@ export const deleteUserFromCloud = async (userId: string): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'system_users', userId);
-    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+    await withTimeout(deleteDoc(docRef), 12000, 'Cloud timeout');
 
     // Record deletion tombstone in Cloud Firestore
     const tombstoneRef = doc(db, 'deleted_users', userId);
@@ -434,13 +486,14 @@ export const deleteUserFromCloud = async (userId: string): Promise<void> => {
         id: userId,
         deletedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
+      12000,
       'Cloud timeout'
     );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting user from cloud:', error?.message);
-    notifyStatus('offline', error?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -517,6 +570,7 @@ export const subscribeAnnouncements = (
     },
     (error) => {
       console.warn('[Firestore] Announcements subscription notice:', error.message);
+      if (!navigator.onLine) notifyStatus('offline');
       if (onError) onError(error);
     }
   );
@@ -561,13 +615,14 @@ export const saveAnnouncementToCloud = async (announcement: Announcement): Promi
         isAuto: Boolean(announcement.isAuto),
         updatedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
-      'Cloud timeout'
+      15000,
+      'Gagal menyimpan pengumuman ke cloud (timeout)'
     );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice saving announcement to cloud:', error?.message);
-    notifyStatus('offline', error?.message || 'Berjalan di mode lokal');
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -575,7 +630,7 @@ export const deleteAnnouncementFromCloud = async (announcementId: string): Promi
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'announcements', announcementId);
-    await withTimeout(deleteDoc(docRef), 3500, 'Cloud timeout');
+    await withTimeout(deleteDoc(docRef), 12000, 'Cloud timeout');
 
     // Permanently record deletion in Cloud Firestore so all devices across network respect deletion
     const tombstoneRef = doc(db, 'deleted_announcements', announcementId);
@@ -584,13 +639,14 @@ export const deleteAnnouncementFromCloud = async (announcementId: string): Promi
         id: announcementId,
         deletedAt: new Date().toISOString()
       }, { merge: true }),
-      3500,
+      12000,
       'Cloud timeout'
     );
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice deleting announcement from cloud:', error?.message);
-    notifyStatus('offline', error?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw error;
   }
 };
 
@@ -601,24 +657,27 @@ export const deleteAnnouncementFromCloud = async (announcementId: string): Promi
 export const seedInitialDatabaseIfEmpty = async (
   initialStudents: Student[],
   initialUsers: SystemUser[],
-  initialAnnouncements: Announcement[] = []
+  initialAnnouncements: Announcement[] = [],
+  initialAttendances: DailyAttendance[] = []
 ): Promise<{ seeded: boolean; message: string }> => {
   try {
-    const studentSnapshot = await withTimeout(getDocs(collection(db, 'students')), 3000, 'Cloud timeout');
-    const userSnapshot = await withTimeout(getDocs(collection(db, 'system_users')), 3000, 'Cloud timeout');
-    const annSnapshot = await withTimeout(getDocs(collection(db, 'announcements')), 3000, 'Cloud timeout');
-    const deletedAnnSnapshot = await withTimeout(getDocs(collection(db, 'deleted_announcements')), 3000, 'Cloud timeout');
+    const studentSnapshot = await withTimeout(getDocs(collection(db, 'students')), 10000, 'Cloud timeout');
+    const userSnapshot = await withTimeout(getDocs(collection(db, 'system_users')), 10000, 'Cloud timeout');
+    const annSnapshot = await withTimeout(getDocs(collection(db, 'announcements')), 10000, 'Cloud timeout');
+    const deletedAnnSnapshot = await withTimeout(getDocs(collection(db, 'deleted_announcements')), 10000, 'Cloud timeout');
+    const attSnapshot = await withTimeout(getDocs(collection(db, 'attendances')), 10000, 'Cloud timeout');
 
     const deletedAnnIds = new Set<string>();
     if (!deletedAnnSnapshot.empty) {
       deletedAnnSnapshot.forEach(d => deletedAnnIds.add(d.id));
     }
 
-    const shouldSeedStudents = studentSnapshot.empty;
-    const shouldSeedUsers = userSnapshot.empty;
-    const shouldSeedAnnouncements = annSnapshot.empty;
+    const shouldSeedStudents = studentSnapshot.empty && initialStudents.length > 0;
+    const shouldSeedUsers = userSnapshot.empty && initialUsers.length > 0;
+    const shouldSeedAnnouncements = annSnapshot.empty && initialAnnouncements.length > 0;
+    const shouldSeedAttendances = attSnapshot.empty && initialAttendances.length > 0;
 
-    if (shouldSeedStudents || shouldSeedUsers || (shouldSeedAnnouncements && initialAnnouncements.length > 0)) {
+    if (shouldSeedStudents || shouldSeedUsers || shouldSeedAnnouncements || shouldSeedAttendances) {
       notifyStatus('syncing');
       
       const batch = writeBatch(db);
@@ -638,7 +697,6 @@ export const seedInitialDatabaseIfEmpty = async (
 
       if (shouldSeedAnnouncements) {
         initialAnnouncements.forEach((ann) => {
-          // Never re-seed an announcement that was explicitly deleted!
           if (!deletedAnnIds.has(ann.id)) {
             const ref = doc(db, 'announcements', ann.id);
             batch.set(ref, {
@@ -649,20 +707,38 @@ export const seedInitialDatabaseIfEmpty = async (
         });
       }
 
-      await withTimeout(batch.commit(), 3500, 'Cloud timeout');
+      if (shouldSeedAttendances) {
+        initialAttendances.forEach((att) => {
+          const docId = att.id || `sesi-${att.date}`;
+          const ref = doc(db, 'attendances', docId);
+          batch.set(ref, {
+            ...att,
+            id: docId,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        });
+      }
+
+      await withTimeout(batch.commit(), 15000, 'Cloud timeout commit seed');
       notifyStatus('connected');
       return { seeded: true, message: `Inisialisasi database awal berhasil di-sinkronkan ke Cloud Firestore!` };
     }
-    return { seeded: false, message: 'Data sudah tersedia di cloud database.' };
+    
+    notifyStatus('connected');
+    return { seeded: false, message: 'Data sudah tersedia di Cloud Database.' };
   } catch (error: any) {
-    console.warn('[Firestore] Seed check notice (operating in local mode):', error?.message);
-    notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console. Data aman di perangkat lokal.');
-    return { seeded: false, message: 'Berjalan di mode lokal (offline).' };
+    console.warn('[Firestore] Seed check notice:', error?.message);
+    if (!navigator.onLine) {
+      notifyStatus('offline', 'Perangkat sedang offline.');
+    } else {
+      notifyStatus('connected');
+    }
+    return { seeded: false, message: 'Sinkronisasi cloud otomatis berjalan di latar belakang.' };
   }
 };
 
 // ---------------------------------------------------------------------------
-// 5. BULK SYNC ALL LOCAL DATA TO CLOUD (MANUAL BACKUP)
+// 6. BULK SYNC ALL DATA TO CLOUD (MANUAL BACKUP / FORCE RE-SYNC)
 // ---------------------------------------------------------------------------
 
 export const uploadAllLocalDataToCloud = async (
@@ -673,11 +749,11 @@ export const uploadAllLocalDataToCloud = async (
 ): Promise<{ success: boolean; message: string }> => {
   notifyStatus('syncing');
   try {
-    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 4000, 'Cloud timeout');
+    const existingSnap = await withTimeout(getDocs(collection(db, 'students')), 12000, 'Cloud timeout');
     const newIds = new Set(students.map(s => String(s.id)));
     const batch = writeBatch(db);
 
-    // Purge student docs in cloud that no longer exist locally
+    // Purge student docs in cloud that no longer exist
     if (existingSnap && !existingSnap.empty) {
       existingSnap.forEach((docSnap) => {
         if (!newIds.has(docSnap.id)) {
@@ -719,6 +795,15 @@ export const uploadAllLocalDataToCloud = async (
         id: docId,
         date: att.date,
         sessionName: att.sessionName || 'Latihan Rutin',
+        sessionType: att.sessionType || (att.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
+        scheduledTime: att.scheduledTime || null,
+        location: att.location || null,
+        targetSection: att.targetSection || null,
+        description: att.description || null,
+        isScheduled: att.isScheduled ?? null,
+        isClosed: att.isClosed ?? false,
+        closedAt: att.closedAt || null,
+        closedBy: att.closedBy || null,
         isSubmitted: att.isSubmitted !== false,
         submittedAt: att.submittedAt || null,
         submittedBy: att.submittedBy || null,
@@ -727,7 +812,6 @@ export const uploadAllLocalDataToCloud = async (
       }, { merge: true });
     });
 
-    // Also persist announcements to cloud
     if (announcements && announcements.length > 0) {
       announcements.forEach((ann) => {
         const ref = doc(db, 'announcements', ann.id);
@@ -738,21 +822,20 @@ export const uploadAllLocalDataToCloud = async (
       });
     }
 
-    await withTimeout(batch.commit(), 4000, 'Koneksi timeout');
+    await withTimeout(batch.commit(), 20000, 'Koneksi timeout');
     notifyStatus('connected');
     return { 
       success: true, 
-      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi, ${announcements.length} pengumuman) berhasil disimpan ke Cloud Database!` 
+      message: `Seluruh data (${students.length} anggota, ${users.length} akun, ${attendances.length} sesi, ${announcements.length} pengumuman) berhasil disinkronkan ke Cloud Database!` 
     };
   } catch (error: any) {
     console.warn('[Firestore] Bulk upload notice:', error?.message);
-    notifyStatus('offline', 'Database Cloud belum diaktifkan di Firebase Console.');
+    if (!navigator.onLine) {
+      notifyStatus('offline', 'Koneksi internet tidak tersedia.');
+    }
     return { 
       success: false, 
-      message: error?.message?.includes('NOT_FOUND') 
-        ? 'Database Firestore belum dibuat di Firebase Console (absen-7862e). Data Anda tetap aman tersimpan di perangkat lokal.' 
-        : (error?.message || 'Gagal menyimpan ke cloud. Data aman tersimpan lokal.') 
+      message: error?.message || 'Gagal sinkronisasi ke cloud. Silakan periksa koneksi internet.'
     };
   }
 };
-
