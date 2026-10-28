@@ -44,6 +44,27 @@ function notifyStatus(status: SyncStatus, error?: string) {
   syncListeners.forEach(cb => cb(status, error));
 }
 
+// Deep recursive sanitizer to eliminate all `undefined` values that cause Firestore setDoc() to fail
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === undefined) return null as any;
+  if (data === null) return null as any;
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as any)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      } else {
+        cleaned[key] = null;
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
+
 // Timeout helper with generous window (15s) so mobile connections (3G/4G/5G) don't get falsely timed out
 const withTimeout = <T>(promise: Promise<T>, ms = 15000, fallbackMessage = 'Koneksi cloud timeout'): Promise<T> => {
   let timer: any;
@@ -67,7 +88,6 @@ export const testCloudConnection = async (): Promise<boolean> => {
       notifyStatus('offline', 'Perangkat sedang tidak terhubung internet.');
       return false;
     }
-    // If document is not found or empty, connection itself is still alive
     notifyStatus('connected');
     return true;
   }
@@ -143,15 +163,16 @@ export const saveStudentToCloud = async (student: Student): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'students', String(student.id));
+    const payload = sanitizeForFirestore({
+      id: Number(student.id),
+      name: student.name || '',
+      kelas: student.kelas || '',
+      asrama: student.asrama || 'A',
+      section: student.section || 'Brass',
+      updatedAt: new Date().toISOString()
+    });
     await withTimeout(
-      setDoc(docRef, {
-        id: student.id,
-        name: student.name,
-        kelas: student.kelas,
-        asrama: student.asrama,
-        section: student.section,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }),
+      setDoc(docRef, payload, { merge: true }),
       15000,
       'Gagal menyimpan anggota ke cloud (timeout)'
     );
@@ -166,21 +187,23 @@ export const saveStudentToCloud = async (student: Student): Promise<void> => {
 };
 
 export const saveMultipleStudentsToCloud = async (studentsList: Student[]): Promise<void> => {
+  if (!studentsList || studentsList.length === 0) return;
   notifyStatus('syncing');
   try {
     const batch = writeBatch(db);
     for (const student of studentsList) {
       const docRef = doc(db, 'students', String(student.id));
-      batch.set(docRef, {
-        id: student.id,
-        name: student.name,
-        kelas: student.kelas,
-        asrama: student.asrama,
-        section: student.section,
+      const payload = sanitizeForFirestore({
+        id: Number(student.id),
+        name: student.name || '',
+        kelas: student.kelas || '',
+        asrama: student.asrama || 'A',
+        section: student.section || 'Brass',
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
+      batch.set(docRef, payload, { merge: true });
     }
-    await withTimeout(batch.commit(), 18000, 'Cloud timeout batch save');
+    await withTimeout(batch.commit(), 18000, 'Cloud timeout batch save students');
     notifyStatus('connected');
   } catch (error: any) {
     console.warn('[Firestore] Notice batch saving students to cloud:', error?.message);
@@ -217,14 +240,15 @@ export const replaceAllStudentsInCloud = async (
     // Write all new students
     for (const student of newStudentsList) {
       const docRef = doc(db, 'students', String(student.id));
-      batch.set(docRef, {
-        id: student.id,
-        name: student.name,
-        kelas: student.kelas,
-        asrama: student.asrama,
-        section: student.section,
+      const payload = sanitizeForFirestore({
+        id: Number(student.id),
+        name: student.name || '',
+        kelas: student.kelas || '',
+        asrama: student.asrama || 'A',
+        section: student.section || 'Brass',
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
+      batch.set(docRef, payload, { merge: true });
     }
 
     await withTimeout(batch.commit(), 20000, 'Cloud timeout replace all students');
@@ -313,7 +337,13 @@ export const subscribeAttendances = (
           isSubmitted: data.isSubmitted !== false,
           submittedAt: data.submittedAt || null,
           submittedBy: data.submittedBy || null,
-          records: Array.isArray(data.records) ? data.records : []
+          records: Array.isArray(data.records) 
+            ? data.records.map((r: any) => ({
+                studentId: Number(r.studentId),
+                status: r.status || '',
+                note: r.note || ''
+              }))
+            : []
         });
       });
       // Sort by date descending
@@ -333,26 +363,33 @@ export const saveAttendanceToCloud = async (attendance: DailyAttendance): Promis
   try {
     const docId = attendance.id || `sesi-${attendance.date}`;
     const docRef = doc(db, 'attendances', docId);
+    const payload = sanitizeForFirestore({
+      id: docId,
+      date: attendance.date,
+      sessionName: attendance.sessionName || 'Latihan Rutin',
+      sessionType: attendance.sessionType || (attendance.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
+      scheduledTime: attendance.scheduledTime || null,
+      location: attendance.location || null,
+      targetSection: attendance.targetSection || null,
+      description: attendance.description || null,
+      isScheduled: attendance.isScheduled ?? false,
+      isClosed: attendance.isClosed ?? false,
+      closedAt: attendance.closedAt || null,
+      closedBy: attendance.closedBy || null,
+      isSubmitted: attendance.isSubmitted !== false,
+      submittedAt: attendance.submittedAt || null,
+      submittedBy: attendance.submittedBy || null,
+      records: Array.isArray(attendance.records)
+        ? attendance.records.map(r => ({
+            studentId: Number(r.studentId),
+            status: r.status || '',
+            note: r.note || ''
+          }))
+        : [],
+      updatedAt: new Date().toISOString()
+    });
     await withTimeout(
-      setDoc(docRef, {
-        id: docId,
-        date: attendance.date,
-        sessionName: attendance.sessionName || 'Latihan Rutin',
-        sessionType: attendance.sessionType || (attendance.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
-        scheduledTime: attendance.scheduledTime || null,
-        location: attendance.location || null,
-        targetSection: attendance.targetSection || null,
-        description: attendance.description || null,
-        isScheduled: attendance.isScheduled ?? null,
-        isClosed: attendance.isClosed ?? false,
-        closedAt: attendance.closedAt || null,
-        closedBy: attendance.closedBy || null,
-        isSubmitted: attendance.isSubmitted !== false,
-        submittedAt: attendance.submittedAt || null,
-        submittedBy: attendance.submittedBy || null,
-        records: attendance.records || [],
-        updatedAt: new Date().toISOString()
-      }, { merge: true }),
+      setDoc(docRef, payload, { merge: true }),
       15000,
       'Gagal menyimpan absensi ke cloud (timeout)'
     );
@@ -363,6 +400,50 @@ export const saveAttendanceToCloud = async (attendance: DailyAttendance): Promis
       notifyStatus('offline', 'Perangkat sedang offline. Tersimpan di cache lokal & akan tersinkron saat online.');
     }
     throw error;
+  }
+};
+
+export const saveMultipleAttendancesToCloud = async (attendancesList: DailyAttendance[]): Promise<void> => {
+  if (!attendancesList || attendancesList.length === 0) return;
+  notifyStatus('syncing');
+  try {
+    const batch = writeBatch(db);
+    for (const att of attendancesList) {
+      const docId = att.id || `sesi-${att.date}`;
+      const docRef = doc(db, 'attendances', docId);
+      const payload = sanitizeForFirestore({
+        id: docId,
+        date: att.date,
+        sessionName: att.sessionName || 'Latihan Rutin',
+        sessionType: att.sessionType || (att.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
+        scheduledTime: att.scheduledTime || null,
+        location: att.location || null,
+        targetSection: att.targetSection || null,
+        description: att.description || null,
+        isScheduled: att.isScheduled ?? false,
+        isClosed: att.isClosed ?? false,
+        closedAt: att.closedAt || null,
+        closedBy: att.closedBy || null,
+        isSubmitted: att.isSubmitted !== false,
+        submittedAt: att.submittedAt || null,
+        submittedBy: att.submittedBy || null,
+        records: Array.isArray(att.records)
+          ? att.records.map(r => ({
+              studentId: Number(r.studentId),
+              status: r.status || '',
+              note: r.note || ''
+            }))
+          : [],
+        updatedAt: new Date().toISOString()
+      });
+      batch.set(docRef, payload, { merge: true });
+    }
+    await withTimeout(batch.commit(), 20000, 'Cloud timeout batch commit attendances');
+    notifyStatus('connected');
+  } catch (err: any) {
+    console.warn('[Firestore] Notice batch saving attendances:', err?.message);
+    if (!navigator.onLine) notifyStatus('offline');
+    throw err;
   }
 };
 
@@ -451,17 +532,18 @@ export const saveUserToCloud = async (user: SystemUser): Promise<void> => {
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'system_users', user.id);
+    const payload = sanitizeForFirestore({
+      id: user.id,
+      username: user.username,
+      password: user.password,
+      fullName: user.fullName,
+      role: user.role,
+      assignedSection: user.assignedSection || 'All',
+      createdAt: user.createdAt,
+      updatedAt: new Date().toISOString()
+    });
     await withTimeout(
-      setDoc(docRef, {
-        id: user.id,
-        username: user.username,
-        password: user.password,
-        fullName: user.fullName,
-        role: user.role,
-        assignedSection: user.assignedSection || 'All',
-        createdAt: user.createdAt,
-        updatedAt: new Date().toISOString()
-      }, { merge: true }),
+      setDoc(docRef, payload, { merge: true }),
       15000,
       'Gagal menyimpan pengguna ke cloud (timeout)'
     );
@@ -601,20 +683,21 @@ export const saveAnnouncementToCloud = async (announcement: Announcement): Promi
   notifyStatus('syncing');
   try {
     const docRef = doc(db, 'announcements', announcement.id);
+    const payload = sanitizeForFirestore({
+      id: announcement.id,
+      title: announcement.title,
+      content: announcement.content,
+      category: announcement.category,
+      targetAudience: announcement.targetAudience,
+      author: announcement.author,
+      authorRole: announcement.authorRole,
+      createdAt: announcement.createdAt,
+      pinned: Boolean(announcement.pinned),
+      isAuto: Boolean(announcement.isAuto),
+      updatedAt: new Date().toISOString()
+    });
     await withTimeout(
-      setDoc(docRef, {
-        id: announcement.id,
-        title: announcement.title,
-        content: announcement.content,
-        category: announcement.category,
-        targetAudience: announcement.targetAudience,
-        author: announcement.author,
-        authorRole: announcement.authorRole,
-        createdAt: announcement.createdAt,
-        pinned: Boolean(announcement.pinned),
-        isAuto: Boolean(announcement.isAuto),
-        updatedAt: new Date().toISOString()
-      }, { merge: true }),
+      setDoc(docRef, payload, { merge: true }),
       15000,
       'Gagal menyimpan pengumuman ke cloud (timeout)'
     );
@@ -684,14 +767,32 @@ export const seedInitialDatabaseIfEmpty = async (
       if (shouldSeedStudents) {
         initialStudents.forEach((student) => {
           const ref = doc(db, 'students', String(student.id));
-          batch.set(ref, student, { merge: true });
+          const payload = sanitizeForFirestore({
+            id: Number(student.id),
+            name: student.name || '',
+            kelas: student.kelas || '',
+            asrama: student.asrama || 'A',
+            section: student.section || 'Brass',
+            updatedAt: new Date().toISOString()
+          });
+          batch.set(ref, payload, { merge: true });
         });
       }
       
       if (shouldSeedUsers) {
         initialUsers.forEach((user) => {
           const ref = doc(db, 'system_users', user.id);
-          batch.set(ref, user, { merge: true });
+          const payload = sanitizeForFirestore({
+            id: user.id,
+            username: user.username,
+            password: user.password,
+            fullName: user.fullName,
+            role: user.role,
+            assignedSection: user.assignedSection || 'All',
+            createdAt: user.createdAt,
+            updatedAt: new Date().toISOString()
+          });
+          batch.set(ref, payload, { merge: true });
         });
       }
 
@@ -699,10 +800,11 @@ export const seedInitialDatabaseIfEmpty = async (
         initialAnnouncements.forEach((ann) => {
           if (!deletedAnnIds.has(ann.id)) {
             const ref = doc(db, 'announcements', ann.id);
-            batch.set(ref, {
+            const payload = sanitizeForFirestore({
               ...ann,
               updatedAt: new Date().toISOString()
-            }, { merge: true });
+            });
+            batch.set(ref, payload, { merge: true });
           }
         });
       }
@@ -711,15 +813,36 @@ export const seedInitialDatabaseIfEmpty = async (
         initialAttendances.forEach((att) => {
           const docId = att.id || `sesi-${att.date}`;
           const ref = doc(db, 'attendances', docId);
-          batch.set(ref, {
-            ...att,
+          const payload = sanitizeForFirestore({
             id: docId,
+            date: att.date,
+            sessionName: att.sessionName || 'Latihan Rutin',
+            sessionType: att.sessionType || (att.sessionName?.toLowerCase().includes('sunnah') ? 'sunnah' : 'wajib'),
+            scheduledTime: att.scheduledTime || null,
+            location: att.location || null,
+            targetSection: att.targetSection || null,
+            description: att.description || null,
+            isScheduled: att.isScheduled ?? false,
+            isClosed: att.isClosed ?? false,
+            closedAt: att.closedAt || null,
+            closedBy: att.closedBy || null,
+            isSubmitted: att.isSubmitted !== false,
+            submittedAt: att.submittedAt || null,
+            submittedBy: att.submittedBy || null,
+            records: Array.isArray(att.records)
+              ? att.records.map(r => ({
+                  studentId: Number(r.studentId),
+                  status: r.status || '',
+                  note: r.note || ''
+                }))
+              : [],
             updatedAt: new Date().toISOString()
-          }, { merge: true });
+          });
+          batch.set(ref, payload, { merge: true });
         });
       }
 
-      await withTimeout(batch.commit(), 15000, 'Cloud timeout commit seed');
+      await withTimeout(batch.commit(), 18000, 'Cloud timeout commit seed');
       notifyStatus('connected');
       return { seeded: true, message: `Inisialisasi database awal berhasil di-sinkronkan ke Cloud Firestore!` };
     }
@@ -764,19 +887,20 @@ export const uploadAllLocalDataToCloud = async (
 
     students.forEach((student) => {
       const ref = doc(db, 'students', String(student.id));
-      batch.set(ref, {
-        id: student.id,
-        name: student.name,
-        kelas: student.kelas,
-        asrama: student.asrama,
-        section: student.section,
+      const payload = sanitizeForFirestore({
+        id: Number(student.id),
+        name: student.name || '',
+        kelas: student.kelas || '',
+        asrama: student.asrama || 'A',
+        section: student.section || 'Brass',
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
+      batch.set(ref, payload, { merge: true });
     });
 
     users.forEach((user) => {
       const ref = doc(db, 'system_users', user.id);
-      batch.set(ref, {
+      const payload = sanitizeForFirestore({
         id: user.id,
         username: user.username,
         password: user.password,
@@ -785,13 +909,14 @@ export const uploadAllLocalDataToCloud = async (
         assignedSection: user.assignedSection || 'All',
         createdAt: user.createdAt,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
+      batch.set(ref, payload, { merge: true });
     });
 
     attendances.forEach((att) => {
       const docId = att.id || `sesi-${att.date}`;
       const ref = doc(db, 'attendances', docId);
-      batch.set(ref, {
+      const payload = sanitizeForFirestore({
         id: docId,
         date: att.date,
         sessionName: att.sessionName || 'Latihan Rutin',
@@ -800,25 +925,33 @@ export const uploadAllLocalDataToCloud = async (
         location: att.location || null,
         targetSection: att.targetSection || null,
         description: att.description || null,
-        isScheduled: att.isScheduled ?? null,
+        isScheduled: att.isScheduled ?? false,
         isClosed: att.isClosed ?? false,
         closedAt: att.closedAt || null,
         closedBy: att.closedBy || null,
         isSubmitted: att.isSubmitted !== false,
         submittedAt: att.submittedAt || null,
         submittedBy: att.submittedBy || null,
-        records: att.records || [],
+        records: Array.isArray(att.records)
+          ? att.records.map(r => ({
+              studentId: Number(r.studentId),
+              status: r.status || '',
+              note: r.note || ''
+            }))
+          : [],
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      });
+      batch.set(ref, payload, { merge: true });
     });
 
     if (announcements && announcements.length > 0) {
       announcements.forEach((ann) => {
         const ref = doc(db, 'announcements', ann.id);
-        batch.set(ref, {
+        const payload = sanitizeForFirestore({
           ...ann,
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        });
+        batch.set(ref, payload, { merge: true });
       });
     }
 

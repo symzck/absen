@@ -29,6 +29,7 @@ import {
   replaceAllStudentsInCloud,
   deleteStudentFromCloud, 
   saveAttendanceToCloud, 
+  saveMultipleAttendancesToCloud,
   deleteAttendanceFromCloud, 
   saveUserToCloud, 
   deleteUserFromCloud, 
@@ -474,6 +475,7 @@ export default function App() {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isAutoSavingCloud, setIsAutoSavingCloud] = useState(false);
   const [showSyncInfoModal, setShowSyncInfoModal] = useState(false);
+  const autoSaveTimerRef = useRef<any>(null);
 
   // Tab Navigation with Browser History Integration (Back / Undo Page Support)
   const changeTab = (newTab: AppTab, date?: string, replace?: boolean) => {
@@ -667,7 +669,7 @@ export default function App() {
       }
     });
 
-    // Real-time listener for students (Authoritative Cloud Sync: respects deletions and local-only additions)
+    // Real-time listener for students (Authoritative Cloud Sync: respects deletions and two-way sync)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (Array.isArray(remoteStudents)) {
         const deletedIds = getDeletedStudentIds();
@@ -679,12 +681,20 @@ export default function App() {
               map.set(remoteS.id, remoteS);
             }
           });
-          // 2. Preserve only brand new un-synced local additions created in current session
-          if (prev && prev.length > 0 && remoteStudents.length > 0) {
-            const nowTime = Date.now();
+          // 2. If Cloud was empty but local has students, preserve and auto-upload
+          if (remoteStudents.length === 0 && prev && prev.length > 0) {
             prev.forEach(s => {
-              if (s.id > 1000000000000 && (nowTime - s.id < 15000) && !deletedIds.has(s.id) && !map.has(s.id)) {
+              if (!deletedIds.has(s.id)) {
                 map.set(s.id, s);
+              }
+            });
+            saveMultipleStudentsToCloud(Array.from(map.values())).catch(() => {});
+          } else if (prev && prev.length > 0 && remoteStudents.length > 0) {
+            // Check for locally added students that haven't hit cloud yet
+            prev.forEach(s => {
+              if (!deletedIds.has(s.id) && !map.has(s.id)) {
+                map.set(s.id, s);
+                saveStudentToCloud(s).catch(() => {});
               }
             });
           }
@@ -695,14 +705,14 @@ export default function App() {
       }
     });
 
-    // Real-time listener for attendances (Authoritative Cloud Sync)
+    // Real-time listener for attendances (Authoritative Cloud Sync with Zero Data Loss)
     const unsubAttendances = subscribeAttendances((remoteAttendances) => {
       if (Array.isArray(remoteAttendances)) {
         const deletedIds = getDeletedAttendanceIds();
         setAttendances(prev => {
           const map = new Map<string, DailyAttendance>();
 
-          // Remote attendances from Cloud Firestore (primary source of truth)
+          // 1. Remote attendances from Cloud Firestore (primary source of truth)
           remoteAttendances.forEach(ra => {
             const docId = ra.id || `sesi-${ra.date}`;
             if (!deletedIds.has(docId) && !deletedIds.has(ra.date)) {
@@ -710,16 +720,22 @@ export default function App() {
             }
           });
 
-          // Preserve only recent local additions waiting for cloud write
+          // 2. PRESERVATION & AUTO-UPLOAD: If local state has sessions that are not in Cloud yet,
+          // preserve them and automatically push them to Cloud Firestore so all devices get them!
           if (prev && prev.length > 0) {
+            const unSyncedSessions: DailyAttendance[] = [];
             prev.forEach(localSess => {
               const docId = localSess.id || `sesi-${localSess.date}`;
               if (!deletedIds.has(docId) && !deletedIds.has(localSess.date) && !map.has(docId)) {
-                if (localSess.id && localSess.id.startsWith('sesi-custom-')) {
-                  map.set(docId, localSess);
-                }
+                map.set(docId, localSess);
+                unSyncedSessions.push(localSess);
               }
             });
+            if (unSyncedSessions.length > 0) {
+              saveMultipleAttendancesToCloud(unSyncedSessions).catch(err => {
+                console.warn('Auto cloud push for local sessions notice:', err);
+              });
+            }
           }
 
           const sorted = sortSessionsByClosest(Array.from(map.values()));
@@ -1220,13 +1236,18 @@ export default function App() {
       }
 
       localStorage.setItem('pgt_attendances', JSON.stringify(nextList));
-      // Auto-save otomatis ke Cloud Firestore pada setiap perubahan data presensi
+      // Auto-save otomatis real-time ke Cloud Firestore pada setiap perubahan data presensi
       setIsAutoSavingCloud(true);
-      saveAttendanceToCloud(sessionObj)
-        .catch(err => console.warn('Auto cloud sync notice:', err))
-        .finally(() => {
-          setTimeout(() => setIsAutoSavingCloud(false), 800);
-        });
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+      autoSaveTimerRef.current = setTimeout(() => {
+        saveAttendanceToCloud(sessionObj)
+          .catch(err => console.warn('Auto cloud sync notice:', err))
+          .finally(() => {
+            setTimeout(() => setIsAutoSavingCloud(false), 500);
+          });
+      }, 300);
       return nextList;
     });
   };
@@ -1549,8 +1570,8 @@ export default function App() {
     });
 
     // Sync all new sessions to Cloud
-    newSessionsToSave.forEach(s => {
-      saveAttendanceToCloud(s).catch(() => {});
+    saveMultipleAttendancesToCloud(newSessionsToSave).catch(err => {
+      console.warn('Batch schedule cloud sync notice:', err);
     });
 
     if (batchData.autoPublishAnnouncement && batchData.sessions.length > 0) {
